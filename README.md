@@ -39,8 +39,11 @@ Please follow the instructions below to install PredSim onto Bunya. There are so
    cp -r Geometry/ ~/deps/opensim-install/
    ```
 9. Now add the ssh key from bunya to your github account and ask India to add your github account to the relevant version of PredSim. See https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
-10. Then, go into the predsim_install folder in Bunya then run
-    
-    ```mv ../PredSim_BunyaInstallation/predsim_install.sh```
-    
-12. Finally, run  ./predsim_install.sh
+
+10. Finally, run
+    ```
+    cd $HOME/predsim_install/
+    sbatch .$HOME/PredSim_BunyaInstallation/predsim_install.sh
+    ```
+    to launch a job that will install predsim with the required cores and memory. If you have an interactive session you can exit it to a login node and watch the progress with
+    ```tail -f $HOME/predsim_install/logs/predsim_install-JOBID.out```
