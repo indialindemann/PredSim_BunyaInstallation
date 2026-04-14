@@ -29,9 +29,9 @@ Please follow the instructions below to install PredSim onto Bunya. There are so
 5. Download the opensim installer from here: https://simtk.org/frs/?group_id=91
    Go down to previous releases and download opensim 4.4
 6. Then copy opensim onto bunya. On your normal terminal (**not in bunya**) run the following command:
-   
+   ```
     scp "C:\Users\YOURNAME\Downloads\OpenSim-4.4-win64.exe" YOURNAME@bunya.rcc.uq.edu.au:/home/YOURNAME/predsim_install/opensim_win
-   
+   ```
 8. Back to bunya. run the following commands
    ```
    ./7zz x OpenSim-4.4-win64.exe
