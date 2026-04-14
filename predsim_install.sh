@@ -11,15 +11,29 @@
 
 
 
-module load gcc/14.2.0
-module load cmake/3.31.3-gcccore-14.2.0
-module load openblas/0.3.29-gcc-14.2.0
+module load gcc/12.3.0
+module load cmake/3.26.3-gcccore-12.3.0
+module load openblas/0.3.23-gcc-12.3.0
 module load matlab/R2023b5
 module load java/21.0.8
+module load pcre2/10.42-gcccore-12.3.0
+module load python/3.11.3-gcccore-12.3.0
+
+
+export CFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
+export CXXFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
+
+
+
 
 
 cd $HOME
 mkdir -p $HOME/deps
+# create the python venv and activate it
+python -m venv "$HOME/deps/python${EBVERSIONPYTHON}-GCCcore-${EBVERSIONGCCCORE}"
+source $HOME/deps/python3.11.3-GCCcore-12.3.0/bin/activate
+
+
 mkdir -p $HOME/predsim_install/coinbrew
 cd $HOME/predsim_install/coinbrew
 wget https://raw.githubusercontent.com/coin-or/coinbrew/master/coinbrew
@@ -60,7 +74,7 @@ cd $HOME/predsim_install/swig
 wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
 tar xzf swig-4.1.1.tar.gz
 cd swig-4.1.1
-./configure --prefix=/home/uqilinde/deps/swig-4.1.1 --without-pcre
+./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
 make -j4
 make install
 
@@ -69,10 +83,7 @@ export PATH="$HOME/deps/swig-4.1.1/bin:$PATH"
 export SWIG_DIR="$HOME/deps/swig-4.1.1/share/swig/4.1.1"
 cd $HOME
 
-mkdir -p deps/casadi
-cd deps/casadi
-wget https://github.com/casadi/casadi/releases/download/3.7.2/casadi-3.7.2-linux64-matlab2018b.zip
-unzip casadi-3.7.2-linux64-matlab2018b.zip
+
 mkdir -p $HOME/predsim_install/spdlog
 cd $HOME/predsim_install/spdlog
 wget -O spdlog-1.15.3.tar.gz https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.tar.gz
@@ -89,6 +100,66 @@ cmake .. \
 
 cmake --build . --parallel 4 
 cmake --install .
+
+#### CASADI INSTALL
+export LD_LIBRARY_PATH=$HOME/deps/ipopt/lib:$LD_LIBRARY_PATH
+export PKG_CONFIG_PATH=$HOME/deps/ipopt/lib/pkgconfig:$PKG_CONFIG_PATH
+
+cd $HOME/predsim_install
+
+git clone --branch 3.7.1 --depth 1 git@github.com:indialindemann/casadi_private.git
+cd $HOME/predsim_install/casadi_private
+rm -rf $HOME/predsim_install/casadi_private/build
+mkdir $HOME/predsim_install/casadi_private/build
+cd $HOME/predsim_install/casadi_private/build
+
+cmake .. \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=$HOME/local/casadi \
+  \
+  -DWITH_IPOPT=ON \
+  -DWITH_BUILD_IPOPT=OFF \
+  -DIPOPT_ROOT_DIR=$HOME/deps/ipopt \
+  \
+  -DWITH_MUMPS=OFF \
+  -DWITH_BUILD_MUMPS=OFF \
+  \
+  -DWITH_LAPACK=ON \
+  -DWITH_BUILD_LAPACK=OFF \
+  -DWITH_OPENBLAS=ON \
+  \
+  -DWITH_PYTHON=ON \
+  -DWITH_PYTHON_GIL_RELEASE=ON \
+  \
+  -DSWIG_EXECUTABLE=$HOME/deps/swig-4.1.1/bin/swig \
+  -DSWIG_DIR=$HOME/deps/swig-4.1.1/share/swig/4.1.1 \
+  \
+  -DWITH_THREAD=ON \
+  -DWITH_COMMON=OFF \
+  -DWITH_EXAMPLES=OFF \
+  -DWITH_DOCUMENTATION=OFF \
+  \
+  -DPython_EXECUTABLE=$HOME/deps/python3.11.3-GCCcore-12.3.0/bin/python \
+  -DPython3_EXECUTABLE=$HOME/deps/python3.11.3-GCCcore-12.3.0/bin/python \
+  -DCMAKE_INSTALL_PYTHONDIR=$HOME/deps/python3.11.3-GCCcore-12.3.0/lib/python3.11/site-packages
+  \
+cmake --build . --parallel 4
+make install
+
+# cmake workaround for cassadi python package
+mkdir -p $HOME/casadi_private/build/lib/casadi
+mv $HOME/casadi_private/build/lib/_casadi.so \
+   $HOME/casadi_private/build/lib/casadi/
+cp $HOME/casadi_private/build/swig/python/casadi.py \
+   $HOME/casadi_private/build/lib/casadi/
+cat > $HOME/casadi_private/build/lib/casadi/__init__.py <<'EOF'
+from .casadi import *
+__version__ = "3.7.1_cmake_fix"
+EOF
+export PYTHONPATH=$HOME/casadi_private/build/lib:$PYTHONPATH
+export LD_LIBRARY_PATH=$HOME/casadi_private/build/lib:$LD_LIBRARY_PATH
+
+
 cd $HOME/predsim_install
 git clone https://github.com/simbody/simbody.git simbody --depth 1
 SIMBODY_SRC="${SIMBODY_SRC:-$HOME/predsim_install/simbody}"
@@ -167,7 +238,6 @@ echo "Manual download time: See instructions"
 # Note if branches change / are merged the cloned branch may need to be changed
 cd $HOME
 git clone --recurse-submodules -b cleancurvev4 git@github.com:indialindemann/PredSim.git
-/usr/bin/python -m pip install --user casadi==3.5.5
 
 
 # 1) Create the MATLAB preferences folder for R2023b (if it doesn't exist)
