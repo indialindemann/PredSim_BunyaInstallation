@@ -43,7 +43,7 @@ Please follow the instructions below to install PredSim onto Bunya. There are so
 10. Finally, run
     ```
     cd $HOME/predsim_install/
-    sbatch .$HOME/PredSim_BunyaInstallation/predsim_install.sh
+    sbatch $HOME/PredSim_BunyaInstallation/predsim_install.sh
     ```
     to launch a job that will install predsim with the required cores and memory. If you have an interactive session you can exit it to a login node and watch the progress with
     ```tail -f $HOME/predsim_install/logs/predsim_install-JOBID.out```
