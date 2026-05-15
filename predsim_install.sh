@@ -102,24 +102,39 @@ cmake --build . --parallel 4
 cmake --install .
 
 #### CASADI INSTALL
-export LD_LIBRARY_PATH=$HOME/deps/ipopt/lib:$LD_LIBRARY_PATH
-export PKG_CONFIG_PATH=$HOME/deps/ipopt/lib/pkgconfig:$PKG_CONFIG_PATH
 
-cd $HOME/predsim_install
+# Assumes the correct Python venv is already activated
 
-git clone --branch 3.7.1 --depth 1 git@github.com:indialindemann/casadi_private.git
-cd $HOME/predsim_install/casadi_private
-rm -rf $HOME/predsim_install/casadi_private/build
-mkdir $HOME/predsim_install/casadi_private/build
-cd $HOME/predsim_install/casadi_private/build
+#### PYTHON DEPS FOR CASADI
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install numpy scipy
+
+export LD_LIBRARY_PATH="$HOME/deps/ipopt/lib:${LD_LIBRARY_PATH:-}"
+export PKG_CONFIG_PATH="$HOME/deps/ipopt/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+
+CASADI_VERSION="3.7.1"
+CASADI_INSTALL="$HOME/deps/casadi"
+PYTHON_EXEC="$(which python)"
+PYTHON_SITE="$(python -c 'import site; print(site.getsitepackages()[0])')"
+
+cd "$HOME/predsim_install"
+
+git clone --branch "$CASADI_VERSION" --depth 1 git@github.com:indialindemann/casadi_private.git
+
+cd "$HOME/predsim_install/casadi_private"
+
+rm -rf build
+mkdir build
+cd build
 
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=$HOME/local/casadi \
+  -DCMAKE_INSTALL_PREFIX="$CASADI_INSTALL" \
+  -DPYTHON_PREFIX="$CASADI_INSTALL" \
   \
   -DWITH_IPOPT=ON \
   -DWITH_BUILD_IPOPT=OFF \
-  -DIPOPT_ROOT_DIR=$HOME/deps/ipopt \
+  -DIPOPT_ROOT_DIR="$HOME/deps/ipopt" \
   \
   -DWITH_MUMPS=OFF \
   -DWITH_BUILD_MUMPS=OFF \
@@ -131,34 +146,30 @@ cmake .. \
   -DWITH_PYTHON=ON \
   -DWITH_PYTHON_GIL_RELEASE=ON \
   \
-  -DSWIG_EXECUTABLE=$HOME/deps/swig-4.1.1/bin/swig \
-  -DSWIG_DIR=$HOME/deps/swig-4.1.1/share/swig/4.1.1 \
+  -DWITH_MATLAB=ON\
+  \
+  -DSWIG_EXECUTABLE="$HOME/deps/swig-4.1.1/bin/swig" \
+  -DSWIG_DIR="$HOME/deps/swig-4.1.1/share/swig/4.1.1" \
   \
   -DWITH_THREAD=ON \
   -DWITH_COMMON=OFF \
   -DWITH_EXAMPLES=OFF \
   -DWITH_DOCUMENTATION=OFF \
   \
-  -DPython_EXECUTABLE=$HOME/deps/python3.11.3-GCCcore-12.3.0/bin/python \
-  -DPython3_EXECUTABLE=$HOME/deps/python3.11.3-GCCcore-12.3.0/bin/python \
-  -DCMAKE_INSTALL_PYTHONDIR=$HOME/deps/python3.11.3-GCCcore-12.3.0/lib/python3.11/site-packages
-  \
+  -DPython_EXECUTABLE="$PYTHON_EXEC" \
+  -DPython3_EXECUTABLE="$PYTHON_EXEC"
+
 cmake --build . --parallel 4
-make install
+cmake --install .
 
-# cmake workaround for cassadi python package
-mkdir -p $HOME/casadi_private/build/lib/casadi
-mv $HOME/casadi_private/build/lib/_casadi.so \
-   $HOME/casadi_private/build/lib/casadi/
-cp $HOME/casadi_private/build/swig/python/casadi.py \
-   $HOME/casadi_private/build/lib/casadi/
-cat > $HOME/casadi_private/build/lib/casadi/__init__.py <<'EOF'
-from .casadi import *
-__version__ = "3.7.1_cmake_fix"
-EOF
-export PYTHONPATH=$HOME/casadi_private/build/lib:$PYTHONPATH
-export LD_LIBRARY_PATH=$HOME/casadi_private/build/lib:$LD_LIBRARY_PATH
+# Link the CasADi install directory into the active venv
+echo "$CASADI_INSTALL" > "$PYTHON_SITE/casadi-local.pth"
 
+# Make shared libraries visible for this shell/job
+export LD_LIBRARY_PATH="$CASADI_INSTALL:$CASADI_INSTALL/lib:$HOME/deps/ipopt/lib:${LD_LIBRARY_PATH:-}"
+
+# Quick test
+python -c "import casadi; print(casadi.__version__); print(casadi.__file__)"
 
 cd $HOME/predsim_install
 git clone https://github.com/simbody/simbody.git simbody --depth 1
