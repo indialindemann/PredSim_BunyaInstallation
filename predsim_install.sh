@@ -25,8 +25,6 @@ export CXXFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
 
 
 
-
-
 cd $HOME
 mkdir -p $HOME/deps
 # create the python venv and activate it
@@ -68,20 +66,46 @@ chmod +x coinbrew
   --verbosity=2 \
   --enable-shared \
   --reconfigure
+
+
+###################
+# SWIG INSTALLATION
+###################
+
+
 mkdir -p $HOME/predsim_install/swig
 cd $HOME/predsim_install/swig
 
-wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
-tar xzf swig-4.1.1.tar.gz
-cd swig-4.1.1
-./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
+
+# Old /actual/ swig program
+#export SWIG_VERSION="swig-4.1.1"
+#wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
+#tar xzf swig-4.1.1.tar.gz
+#cd swig-4.1.1
+#./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
+
+# new and improved 24 year old fork
+#export SWIG_VERSION="matlab-customdoc"  # this version is referenced in the actual casadi docs (https://github.com/casadi/casadi/wiki/matlab#installation-instructions)
+export SWIG_VERSION="swig-4.4.0" # I just manually looked this up from the install output of the below fork
+export SWIG_CASADI_BRANCH="matlab-customdoc2"  # this is more up to date and appears merged with the latest(ish) swig version (https://github.com/jaeandersson/swig/tree/matlab-customdoc2)
+git clone --branch "$SWIG_CASADI_BRANCH" --depth 1 https://github.com/jaeandersson/swig.git
+cd swig
+
+./autogen.sh
+./configure --prefix=$HOME/deps/$SWIG_VERSION --with-pcre
+
 make -j4
 make install
 
 # Expose to this shell session
-export PATH="$HOME/deps/swig-4.1.1/bin:$PATH"
-export SWIG_DIR="$HOME/deps/swig-4.1.1/share/swig/4.1.1"
+export PATH="$HOME/deps/$SWIG_VERSION/bin:$PATH"
+export SWIG_DIR="$HOME/deps/$SWIG_VERSION/share/swig/4.4.0"  # version number is hard coded atm, you will need to change if messing with the swig version
+
 cd $HOME
+
+######################
+# SPDLOG INSTALLATION
+######################
 
 
 mkdir -p $HOME/predsim_install/spdlog
@@ -146,10 +170,11 @@ cmake .. \
   -DWITH_PYTHON=ON \
   -DWITH_PYTHON_GIL_RELEASE=ON \
   \
-  -DWITH_MATLAB=ON\
+  -DWITH_MATLAB=ON\ # See https://github.com/casadi/casadi/wiki/matlab
+  -DWITH_DEEPBIND=ON\ # See https://github.com/casadi/casadi/wiki/matlab#installation-instructions Step 6 
   \
-  -DSWIG_EXECUTABLE="$HOME/deps/swig-4.1.1/bin/swig" \
-  -DSWIG_DIR="$HOME/deps/swig-4.1.1/share/swig/4.1.1" \
+  -DSWIG_EXECUTABLE="$HOME/deps/$SWIG_VERSION/bin/swig" \
+  -DSWIG_DIR="$SWIG_DIR" \
   \
   -DWITH_THREAD=ON \
   -DWITH_COMMON=OFF \
