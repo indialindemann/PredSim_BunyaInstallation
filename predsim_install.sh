@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
-#SBATCH --time=04:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
 
@@ -16,7 +16,8 @@ module load cmake/3.26.3-gcccore-12.3.0
 module load openblas/0.3.23-gcc-12.3.0
 module load matlab/R2023b5
 module load java/21.0.8
-module load pcre2/10.42-gcccore-12.3.0
+# older version of swig not compatible with PCRE2, needs PCRE1
+#module load pcre2/10.42-gcccore-12.3.0
 module load python/3.11.3-gcccore-12.3.0
 
 
@@ -85,13 +86,19 @@ cd $HOME/predsim_install/swig
 #./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
 
 # new and improved 24 year old fork
-#export SWIG_VERSION="matlab-customdoc"  # this version is referenced in the actual casadi docs (https://github.com/casadi/casadi/wiki/matlab#installation-instructions)
-export SWIG_VERSION="swig-4.4.0" # I just manually looked this up from the install output of the below fork
-export SWIG_CASADI_BRANCH="matlab-customdoc2"  # this is more up to date and appears merged with the latest(ish) swig version (https://github.com/jaeandersson/swig/tree/matlab-customdoc2)
+export SWIG_VERSION="swig-3.0.11"
+export SWIG_CASADI_BRANCH="matlab-customdoc"  # this version is referenced in the actual casadi docs (https://github.com/casadi/casadi/wiki/matlab#installation-instructions)
+#export SWIG_VERSION="swig-4.4.0" # I just manually looked this up from the install output of the below fork
+#export SWIG_CASADI_BRANCH="matlab-customdoc2"  # this is more up to date and appears merged with the latest(ish) swig version (https://github.com/jaeandersson/swig/tree/matlab-customdoc2)
+
+echo "Removing existing swig"
+rm -rf swig
+
 git clone --branch "$SWIG_CASADI_BRANCH" --depth 1 https://github.com/jaeandersson/swig.git
 cd swig
 
 ./autogen.sh
+Tools/pcre-build.sh
 ./configure --prefix=$HOME/deps/$SWIG_VERSION --with-pcre
 
 make -j4
@@ -99,7 +106,7 @@ make install
 
 # Expose to this shell session
 export PATH="$HOME/deps/$SWIG_VERSION/bin:$PATH"
-export SWIG_DIR="$HOME/deps/$SWIG_VERSION/share/swig/4.4.0"  # version number is hard coded atm, you will need to change if messing with the swig version
+export SWIG_DIR="$HOME/deps/$SWIG_VERSION/share/swig/3.0.11"  # version number is hard coded atm, you will need to change if messing with the swig version
 
 cd $HOME
 
@@ -168,10 +175,13 @@ cmake .. \
   -DWITH_OPENBLAS=ON \
   \
   -DWITH_PYTHON=ON \
+  -DWITH_PYTHON3=ON\
   -DWITH_PYTHON_GIL_RELEASE=ON \
   \
-  -DWITH_MATLAB=ON\ # See https://github.com/casadi/casadi/wiki/matlab
-  -DWITH_DEEPBIND=ON\ # See https://github.com/casadi/casadi/wiki/matlab#installation-instructions Step 6 
+  -DWITH_MATLAB=ON\
+  # See https://github.com/casadi/casadi/wiki/matlab
+  -DWITH_DEEPBIND=ON\
+	  # See https://github.com/casadi/casadi/wiki/matlab#installation-instructions Step 6 
   \
   -DSWIG_EXECUTABLE="$HOME/deps/$SWIG_VERSION/bin/swig" \
   -DSWIG_DIR="$SWIG_DIR" \
