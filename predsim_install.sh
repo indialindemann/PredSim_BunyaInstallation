@@ -10,26 +10,44 @@
 #SBATCH --error=logs/%x-%j.err
 
 
-
+# There will likely need to be soe switching code here but for now hardcoding the ubuntu modules
+# or rather enough to catch the version
 module load gcc/12.3.0
-module load cmake/3.26.3-gcccore-12.3.0
+module load cmake/3.26
 module load openblas/0.3.23-gcc-12.3.0
-module load matlab/R2023b5
-module load java/21.0.8
-module load pcre2/10.42-gcccore-12.3.0
-module load python/3.11.3-gcccore-12.3.0
+module load matlab/
+module load java/
+module load python/3.11
 
 
-export CFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
-export CXXFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
+#TODO SWITCHING BASED ON BUNYA OR HOME (OR SOME OTHER THING IN WHCIH CASE DO NOTHING)
+#export CFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
+#export CXXFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
+
+export CFLAGS="-O2 -march=native -mtune=native -fPIC"
+export CXXFLAGS="-O2 -march=native -mtune=native -fPIC"
+export FFLAGS="-O2 -march=native -mtune=native -fPIC"
 
 
 
 cd $HOME
 mkdir -p $HOME/deps
+#####################
+### PYTHON ENVIRONMENT
+#####################
 # create the python venv and activate it
-python -m venv "$HOME/deps/python${EBVERSIONPYTHON}-GCCcore-${EBVERSIONGCCCORE}"
-source $HOME/deps/python3.11.3-GCCcore-12.3.0/bin/activate
+#python -m venv "$HOME/deps/python${EBVERSIONPYTHON}-GCCcore-${EBVERSIONGCCCORE}"
+#source $HOME/deps/python3.11.3-GCCcore-12.3.0/bin/activate
+
+PYVER=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')
+VENV="$HOME/deps/python-${PYVER}"
+
+if [ ! -d "$VENV" ]; then
+    python -m venv "$VENV"
+fi
+
+source "$VENV/bin/activate"
+
 
 
 mkdir -p $HOME/predsim_install/coinbrew
