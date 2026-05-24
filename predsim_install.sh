@@ -39,6 +39,8 @@ mkdir -p $HOME/deps
 #python -m venv "$HOME/deps/python${EBVERSIONPYTHON}-GCCcore-${EBVERSIONGCCCORE}"
 #source $HOME/deps/python3.11.3-GCCcore-12.3.0/bin/activate
 
+
+# TODO this needs to be validated on bunya
 PYVER=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')
 VENV="$HOME/deps/python-${PYVER}"
 
@@ -48,19 +50,38 @@ fi
 
 source "$VENV/bin/activate"
 
-
-
+##########################
+### IPOPT/COINBREW INSTALL
+##########################
 mkdir -p $HOME/predsim_install/coinbrew
 cd $HOME/predsim_install/coinbrew
 wget https://raw.githubusercontent.com/coin-or/coinbrew/master/coinbrew
 
-# Locate OpenBLAS lib dir (lib64 vs lib) 
-if [ -f "$EBROOTOPENBLAS/lib64/libopenblas.so" ]; then
-	export OBLIBDIR="$EBROOTOPENBLAS/lib64" 
+## Locate OpenBLAS lib dir (lib64 vs lib) 
+#if [ -f "$EBROOTOPENBLAS/lib64/libopenblas.so" ]; then
+#	export OBLIBDIR="$EBROOTOPENBLAS/lib64" 
+#else
+#     	export OBLIBDIR="$EBROOTOPENBLAS/lib" 
+#fi
+#export OBLAS="$OBLIBDIR/libopenblas.so"
+
+## UBUNTU VERSION
+export OPENBLAS_ROOT=$(spack location -i openblas)
+if [ -f "$OPENBLAS_ROOT/lib64/libopenblas.so" ]; then
+    export OBLIBDIR="$OPENBLAS_ROOT/lib64"
+elif [ -f "$OPENBLAS_ROOT/lib/libopenblas.so" ]; then
+    export OBLIBDIR="$OPENBLAS_ROOT/lib"
 else
-     	export OBLIBDIR="$EBROOTOPENBLAS/lib" 
+    echo "ERROR: libopenblas.so not found under $OPENBLAS_ROOT"
+    #exit 1
 fi
+
 export OBLAS="$OBLIBDIR/libopenblas.so"
+
+echo "OPENBLAS_ROOT=$OPENBLAS_ROOT"
+echo "OBLIBDIR=$OBLIBDIR"
+echo "OBLAS=$OBLAS"
+
 
 
 # Create local wrappers so -llapack and -lblas resolve to OpenBLAS
