@@ -73,7 +73,7 @@ elif [ -f "$OPENBLAS_ROOT/lib/libopenblas.so" ]; then
     export OBLIBDIR="$OPENBLAS_ROOT/lib"
 else
     echo "ERROR: libopenblas.so not found under $OPENBLAS_ROOT"
-    #exit 1
+    exit 1
 fi
 
 export OBLAS="$OBLIBDIR/libopenblas.so"
@@ -95,6 +95,10 @@ export LDFLAGS="-L$HOME/lib/blaswrap -L$OBLIBDIR ${LDFLAGS:-}"
 export LIBS="-llapack -lblas ${LIBS:-}"
 export BLAS_LIBS="-L$HOME/lib/blaswrap -lblas"
 export LAPACK_LIBS="-L$HOME/lib/blaswrap -llapack"
+
+# ubuntu specific line
+export LD_LIBRARY_PATH="$OBLIBDIR:${LD_LIBRARY_PATH:-}"
+
 
 cd "$HOME/predsim_install/coinbrew"
 chmod +x coinbrew
