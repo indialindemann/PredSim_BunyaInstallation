@@ -24,9 +24,9 @@ module load python/3.11
 #export CFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
 #export CXXFLAGS="-O3 -march=znver4 -mtune=znver4 -fPIC"
 
-export CFLAGS="-O2 -march=native -mtune=native -fPIC"
-export CXXFLAGS="-O2 -march=native -mtune=native -fPIC"
-export FFLAGS="-O2 -march=native -mtune=native -fPIC"
+#export CFLAGS="-O2 -march=native -mtune=native -fPIC"
+#export CXXFLAGS="-O2 -march=native -mtune=native -fPIC"
+#export FFLAGS="-O2 -march=native -mtune=native -fPIC"
 
 
 
@@ -121,11 +121,11 @@ cd $HOME/predsim_install/swig
 
 
 # Old /actual/ swig program
-#export SWIG_VERSION="swig-4.1.1"
-#wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
-#tar xzf swig-4.1.1.tar.gz
-#cd swig-4.1.1
-#./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
+export SWIG_VERSION="swig-4.1.1"
+wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
+tar xzf swig-4.1.1.tar.gz
+cd swig-4.1.1
+./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
 
 # new and improved 24 year old fork
 export SWIG_VERSION="swig-3.0.11"
@@ -140,12 +140,15 @@ git clone --branch "$SWIG_CASADI_BRANCH" --depth 1 https://github.com/jaeanderss
 cd swig
 wget -O pcre-8.45.tar.bz2 \
   https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.bz2
-./autogen.sh
-Tools/pcre-build.sh
-./configure --prefix=$HOME/deps/$SWIG_VERSION --with-pcre
 
-make -j4
-make install
+export GCC7="$(spack location -i gcc@7.5.0)/bin"
+
+CC=$GCC7/gcc CXX=$GCC7/g++ ./autogen.sh
+CC=$GCC7/gcc CXX=$GCC7/g++ Tools/pcre-build.sh
+CC=$GCC7/gcc CXX=$GCC7/g++ ./configure --prefix=$HOME/deps/$SWIG_VERSION --with-pcre
+
+CC=$GCC7/gcc CXX=$GCC7/g++ make -j4
+CC=$GCC7/gcc CXX=$GCC7/g++ make install
 
 # Expose to this shell session
 export PATH="$HOME/deps/$SWIG_VERSION/bin:$PATH"
@@ -195,7 +198,7 @@ PYTHON_EXEC="$(which python)"
 PYTHON_SITE="$(python -c 'import site; print(site.getsitepackages()[0])')"
 
 cd "$HOME/predsim_install"
-
+rm -rf "$HOME/predsim_install/casadi_private"
 git clone --branch "$CASADI_VERSION" --depth 1 git@github.com:indialindemann/casadi_private.git
 
 cd "$HOME/predsim_install/casadi_private"
