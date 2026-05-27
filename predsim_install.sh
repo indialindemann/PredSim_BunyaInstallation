@@ -138,7 +138,8 @@ rm -rf swig
 
 git clone --branch "$SWIG_CASADI_BRANCH" --depth 1 https://github.com/jaeandersson/swig.git
 cd swig
-
+wget -O pcre-8.45.tar.bz2 \
+  https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.bz2
 ./autogen.sh
 Tools/pcre-build.sh
 ./configure --prefix=$HOME/deps/$SWIG_VERSION --with-pcre
@@ -174,8 +175,11 @@ cmake .. \
 cmake --build . --parallel 4 
 cmake --install .
 
-#### CASADI INSTALL
 
+
+##################
+#### CASADI INSTALL
+###################
 # Assumes the correct Python venv is already activated
 
 #### PYTHON DEPS FOR CASADI
@@ -200,6 +204,11 @@ rm -rf build
 mkdir build
 cd build
 
+
+# DWITH_MATLAB ->  See https://github.com/casadi/casadi/wiki/matlab
+# DWITH_DEEPBIND_ON -> # See https://github.com/casadi/casadi/wiki/matlab#installation-instructions Step 6
+# dropped vars
+#   #-DWITH_PYTHON_GIL_RELEASE=ON \
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$CASADI_INSTALL" \
@@ -218,12 +227,9 @@ cmake .. \
   \
   -DWITH_PYTHON=ON \
   -DWITH_PYTHON3=ON\
-  -DWITH_PYTHON_GIL_RELEASE=ON \
   \
   -DWITH_MATLAB=ON\
-  # See https://github.com/casadi/casadi/wiki/matlab
   -DWITH_DEEPBIND=ON\
-	  # See https://github.com/casadi/casadi/wiki/matlab#installation-instructions Step 6 
   \
   -DSWIG_EXECUTABLE="$HOME/deps/$SWIG_VERSION/bin/swig" \
   -DSWIG_DIR="$SWIG_DIR" \
