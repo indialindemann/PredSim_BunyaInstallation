@@ -119,18 +119,10 @@ chmod +x coinbrew
 mkdir -p $HOME/predsim_install/swig
 cd $HOME/predsim_install/swig
 
-
-# Old /actual/ swig program
-export SWIG_VERSION="swig-4.1.1"
-wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
-tar xzf swig-4.1.1.tar.gz
-cd swig-4.1.1
-./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
-
 # new and improved 24 year old fork
-export SWIG_VERSION="swig-3.0.11"
+export SWIG_CASADI_VERSION="swig-3.0.11"
 export SWIG_CASADI_BRANCH="matlab-customdoc"  # this version is referenced in the actual casadi docs (https://github.com/casadi/casadi/wiki/matlab#installation-instructions)
-#export SWIG_VERSION="swig-4.4.0" # I just manually looked this up from the install output of the below fork
+#export SWIG_CASADI_VERSION="swig-4.4.0" # I just manually looked this up from the install output of the below fork
 #export SWIG_CASADI_BRANCH="matlab-customdoc2"  # this is more up to date and appears merged with the latest(ish) swig version (https://github.com/jaeandersson/swig/tree/matlab-customdoc2)
 
 echo "Removing existing swig"
@@ -145,14 +137,15 @@ export GCC7="$(spack location -i gcc@7.5.0)/bin"
 
 CC=$GCC7/gcc CXX=$GCC7/g++ ./autogen.sh
 CC=$GCC7/gcc CXX=$GCC7/g++ Tools/pcre-build.sh
-CC=$GCC7/gcc CXX=$GCC7/g++ ./configure --prefix=$HOME/deps/$SWIG_VERSION --with-pcre
+CC=$GCC7/gcc CXX=$GCC7/g++ ./configure --prefix=$HOME/deps/$SWIG_CASADI_VERSION --with-pcre
 
 CC=$GCC7/gcc CXX=$GCC7/g++ make -j4
 CC=$GCC7/gcc CXX=$GCC7/g++ make install
 
 # Expose to this shell session
-export PATH="$HOME/deps/$SWIG_VERSION/bin:$PATH"
-export SWIG_DIR="$HOME/deps/$SWIG_VERSION/share/swig/3.0.11"  # version number is hard coded atm, you will need to change if messing with the swig version
+# Only use this for the compilation of casadi
+# export PATH="$HOME/deps/$SWIG_CASADI_VERSION/bin:$PATH"
+export SWIG_DIR="$HOME/deps/$SWIG_CASADI_VERSION/share/swig/3.0.11"  # version number is hard coded atm, you will need to change if messing with the swig version
 
 cd $HOME
 
@@ -212,41 +205,43 @@ cd build
 # DWITH_DEEPBIND_ON -> # See https://github.com/casadi/casadi/wiki/matlab#installation-instructions Step 6
 # dropped vars
 #   #-DWITH_PYTHON_GIL_RELEASE=ON \
-cmake .. \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$CASADI_INSTALL" \
-  -DPYTHON_PREFIX="$CASADI_INSTALL" \
-  \
-  -DWITH_IPOPT=ON \
-  -DWITH_BUILD_IPOPT=OFF \
-  -DIPOPT_ROOT_DIR="$HOME/deps/ipopt" \
-  \
-  -DWITH_MUMPS=OFF \
-  -DWITH_BUILD_MUMPS=OFF \
-  \
-  -DWITH_LAPACK=ON \
-  -DWITH_BUILD_LAPACK=OFF \
-  -DWITH_OPENBLAS=ON \
-  \
-  -DWITH_PYTHON=ON \
-  -DWITH_PYTHON3=ON\
-  \
-  -DWITH_MATLAB=ON\
-  -DWITH_DEEPBIND=ON\
-  \
-  -DSWIG_EXECUTABLE="$HOME/deps/$SWIG_VERSION/bin/swig" \
-  -DSWIG_DIR="$SWIG_DIR" \
-  \
-  -DWITH_THREAD=ON \
-  -DWITH_COMMON=OFF \
-  -DWITH_EXAMPLES=OFF \
-  -DWITH_DOCUMENTATION=OFF \
-  \
-  -DPython_EXECUTABLE="$PYTHON_EXEC" \
-  -DPython3_EXECUTABLE="$PYTHON_EXEC"
 
-cmake --build . --parallel 4
-cmake --install .
+# only expose the swig fork to the casadi compilation, not the other compilations
+PATH="$HOME/deps/$SWIG_CASADI_VERSION/bin:$PATH" cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$CASADI_INSTALL" \
+    -DPYTHON_PREFIX="$CASADI_INSTALL" \
+    \
+    -DWITH_IPOPT=ON \
+    -DWITH_BUILD_IPOPT=OFF \
+    -DIPOPT_ROOT_DIR="$HOME/deps/ipopt" \
+    \
+    -DWITH_MUMPS=OFF \
+    -DWITH_BUILD_MUMPS=OFF \
+    \
+    -DWITH_LAPACK=ON \
+    -DWITH_BUILD_LAPACK=OFF \
+    -DWITH_OPENBLAS=ON \
+    \
+    -DWITH_PYTHON=ON \
+    -DWITH_PYTHON3=ON\
+    \
+    -DWITH_MATLAB=ON\
+    -DWITH_DEEPBIND=ON\
+    \
+    -DSWIG_EXECUTABLE="$HOME/deps/$SWIG_CASADI_VERSION/bin/swig" \
+    -DSWIG_DIR="$SWIG_DIR" \
+    \
+    -DWITH_THREAD=ON \
+    -DWITH_COMMON=OFF \
+    -DWITH_EXAMPLES=OFF \
+    -DWITH_DOCUMENTATION=OFF \
+    \
+    -DPython_EXECUTABLE="$PYTHON_EXEC" \
+    -DPython3_EXECUTABLE="$PYTHON_EXEC"
+
+PATH="$HOME/deps/$SWIG_CASADI_VERSION/bin:$PATH" cmake --build . --parallel 4
+PATH="$HOME/deps/$SWIG_CASADI_VERSION/bin:$PATH" cmake --install .
 
 # Link the CasADi install directory into the active venv
 echo "$CASADI_INSTALL" > "$PYTHON_SITE/casadi-local.pth"
@@ -284,6 +279,33 @@ cmake -S "$SIMBODY_SRC" -B "$BUILD_DIR" \
 
 cmake --build "$BUILD_DIR" --parallel 4
 cmake --install "$BUILD_DIR"
+
+
+
+# module load pcre2 for opensim and hope it ignores the out of date version
+module load pcre2/10.42-gcccore-12.3.0
+# Old /actual/ swig program
+mkdir -p $HOME/predsim_install/swig
+cd $HOME/predsim_install/swig
+export SWIG_VERSION="swig-4.1.1"
+wget -O swig-4.1.1.tar.gz https://prdownloads.sourceforge.net/swig/swig-4.1.1.tar.gz
+tar xzf swig-4.1.1.tar.gz
+cd swig-4.1.1
+./configure --prefix=$HOME/deps/swig-4.1.1 --with-pcre #--without-pcre
+
+make -j4
+make install
+
+# Expose to this shell session
+export PATH="$HOME/deps/$SWIG_VERSION/bin:$PATH"
+export SWIG_DIR="$HOME/deps/$SWIG_VERSION/share/swig/4.1.1"
+
+
+##########################
+## PREDSIM PACKAGE INSTALL
+##########################
+
+
 cd $HOME/predsim_install
 
 git clone https://github.com/opensim-org/opensim-core.git --depth 1
@@ -297,6 +319,8 @@ export CMAKE_PREFIX_PATH="$HOME/deps/spdlog:$HOME/deps/simbody:$HOME/deps/ipopt:
 export CMAKE_FIND_PACKAGE_PREFER_CONFIG=TRUE
 export CMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
 export CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF
+
+
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$HOME/deps/opensim-install" \
@@ -338,12 +362,14 @@ git clone --recurse-submodules -b cleancurvev4 git@github.com:indialindemann/Pre
 
 
 # 1) Create the MATLAB preferences folder for R2023b (if it doesn't exist)
-mkdir -p $HOME/.matlab/R2023b
+mkdir -p $HOME/.matlab/$MATLAB_VERSION
 # 2) Tell MATLAB where to find the JNI .so files (OpenSim, Simbody, Ipopt)
-echo  "$HOME/deps/simbody/lib" >> $HOME/.matlab/R2023b/javalibrarypath.txt
-echo  "$HOME/deps/ipopt/lib" >> $HOME/.matlab/R2023b/javalibrarypath.txt
-echo  "$HOME/deps/opensim-install/lib" >> $HOME/.matlab/R2023b/javalibrarypath.txt
-echo  "$HOME/deps/opensim-install/sdk/lib" >> $HOME/.matlab/R2023b/javalibrarypath.txt
-echo "$EBROOTOPENBLAS/lib64" >> $HOME/.matlab/R2023b/javalibrarypath.txt
+# this is hardcoded to the ubuntu matlab versio
+# todo make these paths system dependant
+echo  "$HOME/deps/simbody/lib" >> $HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt
+echo  "$HOME/deps/ipopt/lib" >> $HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt
+echo  "$HOME/deps/opensim-install/lib" >> $HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt
+echo  "$HOME/deps/opensim-install/sdk/lib" >> $HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt
+echo "$EBROOTOPENBLAS/lib64" >> $HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt
 
 
