@@ -84,17 +84,17 @@ echo "OBLAS=$OBLAS"
 
 
 
-# Create local wrappers so -llapack and -lblas resolve to OpenBLAS
-mkdir -p "$HOME/lib/blaswrap"
-ln -sf "$OBLIBDIR/libopenblas.so" "$HOME/lib/blaswrap/liblapack.so"
-ln -sf "$OBLIBDIR/libopenblas.so" "$HOME/lib/blaswrap/libblas.so"
+# # Create local wrappers so -llapack and -lblas resolve to OpenBLAS
+# mkdir -p "$HOME/lib/blaswrap"
+# ln -sf "$OBLIBDIR/libopenblas.so" "$HOME/lib/blaswrap/liblapack.so"
+# ln -sf "$OBLIBDIR/libopenblas.so" "$HOME/lib/blaswrap/libblas.so"
 
 
 # Strong link hints for Autotools-based ThirdParty/Mumps
-export LDFLAGS="-L$HOME/lib/blaswrap -L$OBLIBDIR ${LDFLAGS:-}"
-export LIBS="-llapack -lblas ${LIBS:-}"
-export BLAS_LIBS="-L$HOME/lib/blaswrap -lblas"
-export LAPACK_LIBS="-L$HOME/lib/blaswrap -llapack"
+# export LDFLAGS="-L$HOME/lib/blaswrap -L$OBLIBDIR ${LDFLAGS:-}"
+# export LIBS="-llapack -lblas ${LIBS:-}"
+# export BLAS_LIBS="-L$HOME/lib/blaswrap -lblas"
+# export LAPACK_LIBS="-L$HOME/lib/blaswrap -llapack"
 
 # ubuntu specific line
 export LD_LIBRARY_PATH="$OBLIBDIR:${LD_LIBRARY_PATH:-}"
@@ -108,7 +108,10 @@ chmod +x coinbrew
   --tests=none \
   --verbosity=2 \
   --enable-shared \
-  --reconfigure
+  --reconfigure \
+  --with-blas="-L$OBLIBDIR -lopenblas" \
+  --with-lapack="-L$OBLIBDIR -lopenblas"
+
 
 
 ###################
