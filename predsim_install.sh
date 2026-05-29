@@ -348,7 +348,7 @@ cp -v "$HOME/predsim_install/opensim-core/build/Bindings/Java/src/org-opensim-mo
 cp -v "$HOME/predsim_install/opensim-core/build/libosimJavaJNI.so" \
       "$HOME/deps/opensim-install/sdk/lib/"
 
-export LD_LIBRARY_PATH="$HOME/opensim-install/sdk/lib:$HOME/opensim-install/lib:$HOME/deps/simbody/lib:$HOME/deps/ipopt/lib:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$HOME/deps/opensim-install/sdk/lib:$HOME/deps/opensim-install/lib:$HOME/deps/simbody/lib:$HOME/deps/ipopt/lib:${LD_LIBRARY_PATH:-}"
 
 cd $HOME/predsim_install
 mkdir -p opensim_win
