@@ -7,8 +7,8 @@ rm -rf "$HOME/deps/casadi"
 rm -rf "$HOME/deps/spdlog"
 rm -rf "$HOME/deps/simbody"
 rm -rf "$HOME/deps/opensim-install"
-rm -rf "$HOME/deps/swig*"
-rm -rf "$HOME/deps/python*"
+rm -rf "$HOME"/deps/swig*
+rm -rf "$HOME"/deps/python*
 
 rm -rf "$HOME/predsim_install/coinbrew"
 rm -rf "$HOME/predsim_install/swig"
