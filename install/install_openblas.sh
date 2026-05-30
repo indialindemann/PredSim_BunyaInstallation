@@ -12,7 +12,7 @@ if [ -n "${EBROOTOPENBLAS:-}" ]; then
         return 1 2>/dev/null || exit 1
     fi
 else
-    export OPENBLAS_ROOT=$(spack location -i openblas)
+    export OPENBLAS_ROOT=$(spack location -i openblas@0.3.32)
     if [ -f "$OPENBLAS_ROOT/lib64/libopenblas.so" ]; then
         export OBLIBDIR="$OPENBLAS_ROOT/lib64"
     elif [ -f "$OPENBLAS_ROOT/lib/libopenblas.so" ]; then
