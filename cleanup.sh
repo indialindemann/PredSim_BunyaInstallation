@@ -7,9 +7,8 @@ rm -rf "$HOME/deps/casadi"
 rm -rf "$HOME/deps/spdlog"
 rm -rf "$HOME/deps/simbody"
 rm -rf "$HOME/deps/opensim-install"
-rm -rf "$HOME/deps/swig-3.0.11"
-rm -rf "$HOME/deps/swig-4.1.1"
-rm -rf "$HOME/deps/swig-4.4.0"
+rm -rf "$HOME/deps/swig*"
+rm -rf "$HOME/deps/python*"
 
 rm -rf "$HOME/predsim_install/coinbrew"
 rm -rf "$HOME/predsim_install/swig"
@@ -22,3 +21,6 @@ rm -rf "$HOME/lib/blaswrap"
 rm -rf "$HOME/PredSim"
 
 rm -f "$HOME"/.matlab/*/javalibrarypath.txt
+
+
+cp -r "$HOME/predsim_install/opensim_win/Geometry/" "$HOME/deps/opensim-install/"
