@@ -10,7 +10,8 @@ cd opensim_win
 echo "Manual download time: See README instructions for OpenSim Windows geometry files."
 
 cd "$HOME"
-git clone --recurse-submodules -b cleancurvev4 git@github.com:indialindemann/PredSim.git
+echo "USING UBUNTU DEV BRANCH"
+git clone --recurse-submodules -b cleancurvev4_ubuntu git@github.com:indialindemann/PredSim.git
 
 mkdir -p "$HOME/.matlab/$MATLAB_VERSION"
 
