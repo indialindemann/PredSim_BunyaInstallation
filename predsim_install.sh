@@ -28,7 +28,7 @@ run_install() {
 # TODO: switching based on Bunya vs Ubuntu (or other host)
 module load gcc/12.3.0
 module load cmake/3.26
-module load openblas/0.3.23-gcc-12.3.0
+module load openblas/0.3.32-gcc-12.3.0
 module load matlab/
 module load java/
 module load python/3.11
