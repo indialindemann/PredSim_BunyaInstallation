@@ -1,6 +1,10 @@
 # PredSim_BunyaInstallation
 Files that install PredSim and all its dependencies onto UQ's HPC (Bunya)
 
+*There is a documented bug using openbalas 0.3.23 that it will not interface with ipopt/mumps correctly*
+ - https://github.com/OpenMathLib/OpenBLAS/issues/4005
+ - https://github.com/coin-or/Ipopt/issues/665
+
 Please follow the instructions below to install PredSim onto Bunya. There are some manual steps that have to happen before you run the install shell script:
 
 1. Download this repo files and copy the files onto bunya using scp command
