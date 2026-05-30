@@ -16,6 +16,7 @@ rm -rf "$HOME/predsim_install/spdlog"
 rm -rf "$HOME/predsim_install/casadi_private"
 rm -rf "$HOME/predsim_install/simbody"
 rm -rf "$HOME/predsim_install/opensim-core"
+rm -rf "$HOME/predsim_install/Ipopt"
 
 rm -rf "$HOME/lib/blaswrap"
 rm -rf "$HOME/PredSim"
