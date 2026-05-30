@@ -22,5 +22,5 @@ rm -rf "$HOME/PredSim"
 
 rm -f "$HOME"/.matlab/*/javalibrarypath.txt
 
-
-cp -r "$HOME/predsim_install/opensim_win/Geometry/" "$HOME/deps/opensim-install/"
+mkdir "$HOME/deps/opensim-install"
+cp -r "$HOME/predsim_install/opensim_win/Geometry" "$HOME/deps/opensim-install/Geometry"
