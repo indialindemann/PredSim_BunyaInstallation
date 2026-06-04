@@ -18,4 +18,10 @@ cmake .. \
 cmake --build . --parallel 4
 cmake --install .
 
+# On Bunya, CMake installs shared libs to lib64; downstream scripts expect lib.
+_prefix="$HOME/deps/spdlog"
+if [[ ! -e "$_prefix/lib" ]] && [[ -d "$_prefix/lib64" ]]; then
+    ln -sfn lib64 "$_prefix/lib"
+fi
+
 cd "$HOME"

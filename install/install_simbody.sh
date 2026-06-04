@@ -27,4 +27,9 @@ cmake -S "$SIMBODY_SRC" -B "$BUILD_DIR" \
 cmake --build "$BUILD_DIR" --parallel 4
 cmake --install "$BUILD_DIR"
 
+# On Bunya, CMake installs shared libs to lib64; downstream scripts expect lib.
+if [[ ! -e "$INSTALL_PREFIX/lib" ]] && [[ -d "$INSTALL_PREFIX/lib64" ]]; then
+    ln -sfn lib64 "$INSTALL_PREFIX/lib"
+fi
+
 cd "$HOME"

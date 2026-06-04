@@ -16,10 +16,7 @@ cd "$HOME"
 echo "Cloning PredSim branch: $PREDSIM_GIT_BRANCH"
 git clone --recurse-submodules -b "$PREDSIM_GIT_BRANCH" git@github.com:indialindemann/PredSim.git
 
-mkdir -p "$HOME/.matlab/$MATLAB_VERSION"
-
-echo "$HOME/deps/simbody/lib" >> "$HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt"
-echo "$HOME/deps/ipopt/lib" >> "$HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt"
-echo "$HOME/deps/opensim-install/lib" >> "$HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt"
-echo "$HOME/deps/opensim-install/sdk/lib" >> "$HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt"
-echo "$OBLIBDIR" >> "$HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt"
+# MATLAB javalibrarypath is configured elsewhere — skip persistent writes here.
+# mkdir -p "$HOME/.matlab/$MATLAB_VERSION"
+# echo "$HOME/deps/simbody/lib" >> "$HOME/.matlab/$MATLAB_VERSION/javalibrarypath.txt"
+# ...

@@ -19,6 +19,9 @@ cd swig
 wget -O pcre-8.45.tar.bz2 \
   https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.bz2
 
+# Set compiler to be gcc7 and also overwrite and global compile flags to minimum defaults
+# as GCC7 is very old and not typically compatible with newer flags
+# Do this manually on each line to avaid messing with environment variables for the rest of the install
 CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
   ./autogen.sh
 CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
