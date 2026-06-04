@@ -19,12 +19,17 @@ cd swig
 wget -O pcre-8.45.tar.bz2 \
   https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.bz2
 
-CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" ./autogen.sh
-CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" Tools/pcre-build.sh
-CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" ./configure --prefix="$HOME/deps/$SWIG_CASADI_VERSION" --with-pcre
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
+  ./autogen.sh
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
+  Tools/pcre-build.sh
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
+  ./configure --prefix="$HOME/deps/$SWIG_CASADI_VERSION" --with-pcre
 
-make -j4
-CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" make install
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
+  make -j4
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
+  make install
 
 export SWIG_DIR="$HOME/deps/$SWIG_CASADI_VERSION/share/swig/3.0.11"
 
