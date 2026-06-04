@@ -76,11 +76,11 @@ cd "$HOME"
 
 run_install install_python_env
 run_install install_openblas
-# run_install install_ipopt  # done: $HOME/deps/ipopt
+run_install install_ipopt
 
-# run_install install_spdlog  # done: $HOME/deps/spdlog
-# run_install install_casadi  # done: $HOME/deps/casadi
-# run_install install_simbody  # done: $HOME/deps/simbody
+run_install install_spdlog
+run_install install_casadi
+run_install install_simbody
 
 export SWIG_CASADI_VERSION="swig-3.0.11"
 export SWIG_DIR="$HOME/deps/$SWIG_CASADI_VERSION/share/swig/3.0.11"
