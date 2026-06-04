@@ -1,7 +1,6 @@
 #!/bin/bash
 # Standard SWIG used by OpenSim (distinct from the CasADi fork).
 # Expects: pcre2 module loaded (via predsim_install.sh).
-# Exports: SWIG_VERSION, SWIG_DIR, updates PATH.
 
 export SWIG_VERSION="swig-4.1.1"
 

@@ -1,6 +1,9 @@
 #!/bin/bash
 # SWIG fork required for CasADi MATLAB bindings.
 # Exports: SWIG_CASADI_VERSION, SWIG_DIR
+# Expects: GCC7_BIN (from resolve_gcc7.sh).
+
+: "${GCC7_BIN:?GCC7_BIN must be set (run resolve_gcc7.sh first)}"
 
 export SWIG_CASADI_VERSION="swig-3.0.11"
 export SWIG_CASADI_BRANCH="matlab-customdoc"
@@ -16,14 +19,12 @@ cd swig
 wget -O pcre-8.45.tar.bz2 \
   https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.bz2
 
-export GCC7="$(spack location -i gcc@7.5.0)/bin"
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" ./autogen.sh
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" Tools/pcre-build.sh
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" ./configure --prefix="$HOME/deps/$SWIG_CASADI_VERSION" --with-pcre
 
-CC=$GCC7/gcc CXX=$GCC7/g++ ./autogen.sh
-CC=$GCC7/gcc CXX=$GCC7/g++ Tools/pcre-build.sh
-CC=$GCC7/gcc CXX=$GCC7/g++ ./configure --prefix="$HOME/deps/$SWIG_CASADI_VERSION" --with-pcre
-
-CC=$GCC7/gcc CXX=$GCC7/g++ make -j4
-CC=$GCC7/gcc CXX=$GCC7/g++ make install
+make -j4
+CC="$GCC7_BIN/gcc" CXX="$GCC7_BIN/g++" make install
 
 export SWIG_DIR="$HOME/deps/$SWIG_CASADI_VERSION/share/swig/3.0.11"
 

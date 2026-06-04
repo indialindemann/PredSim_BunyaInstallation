@@ -11,13 +11,8 @@ cd opensim-core
 mkdir -p build
 cd build
 
-export SIMBODY_HOME="$HOME/deps/simbody"
 export PKG_CONFIG_PATH="$HOME/deps/ipopt/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export LD_LIBRARY_PATH="$HOME/deps/simbody/lib:$HOME/deps/ipopt/lib:$HOME/deps/spdlog/lib:${LD_LIBRARY_PATH:-}"
-export CMAKE_PREFIX_PATH="$HOME/deps/spdlog:$HOME/deps/simbody:$HOME/deps/ipopt:${CMAKE_PREFIX_PATH:-}"
-export CMAKE_FIND_PACKAGE_PREFER_CONFIG=TRUE
-export CMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
-export CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF
 
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
@@ -26,8 +21,11 @@ cmake .. \
   -DBUILD_PYTHON_WRAPPING=OFF \
   -DBUILD_TESTING=OFF \
   -DSUPERLU=OFF \
-  -DSIMBODY_HOME="$SIMBODY_HOME" \
+  -DSIMBODY_HOME="$HOME/deps/simbody" \
   -DCMAKE_PREFIX_PATH="$HOME/deps/spdlog;$HOME/deps/simbody;$HOME/deps/ipopt" \
+  -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=TRUE \
+  -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF \
+  -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF \
   -DBLA_VENDOR=OpenBLAS \
   -DBLAS_LIBRARIES="$OBLAS" \
   -DLAPACK_LIBRARIES="$OBLAS" \

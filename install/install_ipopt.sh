@@ -9,6 +9,7 @@ cd "$PREDsim_INSTALL_ROOT/coinbrew"
 wget -nc https://raw.githubusercontent.com/coin-or/coinbrew/master/coinbrew
 
 chmod +x coinbrew
+
 ./coinbrew build Ipopt \
   --prefix="$HOME/deps/ipopt" \
   --no-prompt \
