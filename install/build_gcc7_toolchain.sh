@@ -19,9 +19,6 @@ fi
 
 echo "Building GCC $GCC7_VERSION into $GCC7_PREFIX"
 
-module purge 2>/dev/null || true
-module load gcc/11.3.0
-
 mkdir -p "$GCC7_DIR"
 cd "$GCC7_DIR"
 
@@ -34,20 +31,22 @@ if [[ ! -d "$GCC7_SRC" ]]; then
 fi
 
 cd "$GCC7_SRC"
-./contrib/download_prerequisites
+CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" ./contrib/download_prerequisites
 
 rm -rf "$GCC7_BUILD"
 mkdir -p "$GCC7_BUILD"
 cd "$GCC7_BUILD"
 
-../configure \
+# Override global compile flags (e.g. -march=znver4 from predsim_install.sh) — GCC 7 cannot use them.
+CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
+  ../configure \
     --prefix="$GCC7_PREFIX" \
     --enable-languages=c,c++ \
     --disable-multilib \
     --disable-bootstrap
 
-make -j4
-make install
+CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" make -j4
+CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" make install
 
 echo "GCC 7 installed to $GCC7_PREFIX"
 "$GCC7_PREFIX/bin/gcc" --version | head -1
