@@ -33,8 +33,6 @@ mkdir -p "$SCRIPT_DIR/logs"
 mkdir -p "$PREDsim_INSTALL_ROOT" "$HOME/deps"
 
 if [[ "$PREDsim_SYSTEM" == bunya_hpc ]]; then
-    # run_install build_gcc7_toolchain  # done: $HOME/deps/gcc7-7.5.0
-
     module load gcc/14.2.0
     module load cmake/3.31.3-gcccore-14.2.0
     module load openblas/0.3.29-gcc-14.2.0
@@ -79,11 +77,15 @@ run_install install_openblas
 run_install install_ipopt
 
 run_install install_spdlog
+
+if [[ "$PREDsim_SYSTEM" == bunya_hpc ]]; then
+    run_install build_gcc7_toolchain
+fi
+run_install resolve_gcc7
+run_install install_swig_casadi
+
 run_install install_casadi
 run_install install_simbody
-
-export SWIG_CASADI_VERSION="swig-3.0.11"
-export SWIG_DIR="$HOME/deps/$SWIG_CASADI_VERSION/share/swig/3.0.11"
 
 export LD_LIBRARY_PATH="$HOME/deps/ipopt/lib:${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="$HOME/deps/ipopt/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
