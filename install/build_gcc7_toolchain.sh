@@ -38,12 +38,17 @@ mkdir -p "$GCC7_BUILD"
 cd "$GCC7_BUILD"
 
 # Override global compile flags (e.g. -march=znver4 from predsim_install.sh) — GCC 7 cannot use them.
+# Disable optional runtimes not needed for SWIG; libsanitizer fails on Rocky 9 (linux/cyclades.h removed).
 CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" \
   ../configure \
     --prefix="$GCC7_PREFIX" \
     --enable-languages=c,c++ \
     --disable-multilib \
-    --disable-bootstrap
+    --disable-bootstrap \
+    --disable-libsanitizer \
+    --disable-libcilkrts \
+    --disable-libvtv \
+    --disable-libmpx
 
 CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" make -j4
 CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC" FFLAGS="" make install
