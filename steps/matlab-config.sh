@@ -21,15 +21,20 @@ export PREDSIM_MATLAB_RELEASE="$rel"
 # run_predsim.sh keeps ~/.matlab/$rel/javalibrarypath.txt pointing here
 export PREDSIM_JAVA_LIBRARY_PATH="$jni"
 export PREDSIM_SBATCH_ARGS="$PREDSIM_SBATCH_ARGS"
-# venv first: opensimAD runs 'python genF.py' and 'cmake' at run time
+# --- site runtime setup (modules etc.); must come before the venv PATH below,
+#     or a site python module would shadow the venv's python
+$(site_runtime_env)
+# venv first: opensimAD runs 'python genF.py' (needs casadi) and 'cmake' at run time
 export VIRTUAL_ENV="$PREFIX/python"
 export PATH="$PREFIX/python/bin:\$PATH"
 # CasADi threads come from S.solver.N_threads; keep BLAS/OpenMP pools from
 # oversubscribing the cores on top of that.
 export OMP_NUM_THREADS="\${OMP_NUM_THREADS:-1}"
 export OPENBLAS_NUM_THREADS="\${OPENBLAS_NUM_THREADS:-1}"
-$(site_runtime_env)
 EOF
+    # the venv's python must win (it has casadi for opensimAD's genF.py)
+    ( source "$PREFIX/env.sh" >/dev/null 2>&1; [[ "$(command -v python)" == "$PREFIX/python/bin/python" ]] ) \
+        || die "env.sh: 'python' does not resolve to $PREFIX/python/bin/python"
     log "wrote $PREFIX/env.sh"
     cat "$PREFIX/env.sh"
 }
