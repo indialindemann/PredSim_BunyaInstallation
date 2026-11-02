@@ -258,9 +258,20 @@ slower than the portable build, so they aren't offered.
 
 PredSim's `OCP/solve_NLPSOL.m` (on cleancurvev4 since 21 Oct 2026) builds the
 solver with `expand = true`. That makes the solve single-threaded:
-`S.solver.N_threads` has no effect (4, 8 and 16 threads measured the same on
-Bunya). The run job therefore requests one physical core. If `expand = false`
-is restored, threading returns; then request `N_threads + 1` CPUs.
+`S.solver.N_threads` has no effect, so the run job requests one physical core.
+
+With `expand = false` threading works again, and on Bunya it was faster:
+
+| epyc3, 80 iterations | s / iteration | vs current | fair-share charge |
+|---|---|---|---|
+| current code (`expand = true`) | 8.4 | 1.00× | 1.00× |
+| `expand = false`, 4 threads | 6.5 | 1.29× faster | 0.77× |
+| `expand = false`, 8 threads | 6.0 | 1.41× faster | 1.18× |
+| `expand = false`, 16 threads | 4.6 | 1.85× faster | 1.62× |
+
+`expand` is set in PredSim's code, not by the installer. If you switch it to
+`false`, request `--cpus-per-task` = `N_threads + 1`, rounded up to an even
+number (Bunya allocates whole cores).
 
 ### Known issues
 
