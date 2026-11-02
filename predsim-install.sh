@@ -70,7 +70,7 @@ source "$SITE_FILE"
 
 [[ "$CASADI_MODE" == prebuilt || "$CASADI_MODE" == source ]] || die "--casadi must be prebuilt or source"
 
-STACK_ID="${SITE}_casadi-${CASADI_VERSION}-${CASADI_MODE}_opensim-${OPENSIM_TAG}"
+STACK_ID="${SITE}${SITE_VARIANT:+-$SITE_VARIANT}_casadi-${CASADI_VERSION}-${CASADI_MODE}_opensim-${OPENSIM_TAG}"
 PREFIX="${PREFIX:-$HOME/predsim-deps/$STACK_ID}"
 PREDSIM_CACHE="${PREDSIM_CACHE:-$HOME/predsim-deps/.cache}"
 BUILD_ROOT="$PREFIX/build"
@@ -146,6 +146,9 @@ for s in "${STEPS[@]}"; do
     if [[ "$state" == skip ]]; then log "-- $s: not needed for this config"; continue; fi
     if [[ "$state" == done && $FORCE -eq 0 && "$s" != verify ]]; then log "-- $s: already done"; continue; fi
 
+    if step_shared "$s" && declare -F site_can_build_shared >/dev/null && ! site_can_build_shared; then
+        die "shared step '$s' ($state) must be built first by an install on the site's portable node type (${SITE_PORTABLE_VARIANT:-?}); e.g. on Bunya: sbatch bunya/install_predsim.slurm (runs on epyc3)"
+    fi
     log "== $s (log: $PREFIX/logs/$s.log)"
     set +e
     (
@@ -163,11 +166,20 @@ for s in "${STEPS[@]}"; do
     step_hash "$s" > "$(step_marker "$s")"
 done
 
-if [[ $ACTIVATE -eq 1 ]]; then
+# Per-CPU-variant link (env-<variant>.sh) whenever the site has variants; the
+# default env.sh only for the portable variant (or sites without variants).
+if [[ -n "${SITE_VARIANT:-}" && -f "$PREFIX/env.sh" && ( $ACTIVATE -eq 1 || ! -e "$HOME/.predsim/env-$SITE_VARIANT.sh" ) ]]; then
+    mkdir -p "$HOME/.predsim"
+    ln -sfn "$PREFIX/env.sh" "$HOME/.predsim/env-$SITE_VARIANT.sh"
+    log "activated: ~/.predsim/env-$SITE_VARIANT.sh -> $PREFIX/env.sh"
+fi
+is_default=1
+[[ -n "${SITE_VARIANT:-}" && "$SITE_VARIANT" != "${SITE_PORTABLE_VARIANT:-}" ]] && is_default=0
+if [[ $ACTIVATE -eq 1 && $is_default -eq 1 ]]; then
     mkdir -p "$HOME/.predsim"
     ln -sfn "$PREFIX/env.sh" "$HOME/.predsim/env.sh"
     log "activated: ~/.predsim/env.sh -> $PREFIX/env.sh"
-elif [[ ! -e "$HOME/.predsim/env.sh" && -f "$PREFIX/env.sh" ]]; then
+elif [[ $is_default -eq 1 && ! -e "$HOME/.predsim/env.sh" && -f "$PREFIX/env.sh" ]]; then
     mkdir -p "$HOME/.predsim"
     ln -sfn "$PREFIX/env.sh" "$HOME/.predsim/env.sh"
     log "no active stack yet; activated this one"

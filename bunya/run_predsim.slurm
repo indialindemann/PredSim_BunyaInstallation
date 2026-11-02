@@ -23,7 +23,11 @@
 # Environment overrides (sbatch --export=ALL,VAR=value):
 #   PREDSIM_SCRIPT   repo-relative MATLAB script, no .m (default: main)
 #   PREDSIM_DIR      PredSim checkout (default: ~/PredSim)
-#   PREDSIM_ENV      stack env file (default: ~/.predsim/env.sh)
+#   PREDSIM_ENV      stack env file (default: ~/.predsim/env-<cpu>.sh for this
+#                    node's CPU type if installed, else ~/.predsim/env.sh)
+#
+# CPU type: add --constraint=epyc3|epyc4|epyc5 to choose; without it the job
+# can land on any type and uses the matching tuned stack when one exists.
 #
 # MATLAB output: ~/PredSim/logs/<script>-<timestamp>.log (and this job's .out).
 # Results: ~/PredSimResults/<subject>/
@@ -31,11 +35,21 @@
 set -euo pipefail
 
 PREDSIM_DIR="${PREDSIM_DIR:-$HOME/PredSim}"
-PREDSIM_ENV="${PREDSIM_ENV:-$HOME/.predsim/env.sh}"
+case "$(grep -m1 'model name' /proc/cpuinfo)" in
+    *"EPYC 7"??"3"*) NODE_ARCH=epyc3 ;;
+    *"EPYC 9"??"4"*) NODE_ARCH=epyc4 ;;
+    *"EPYC 9"??"5"*) NODE_ARCH=epyc5 ;;
+    *) NODE_ARCH=unknown ;;
+esac
+if [[ -z "${PREDSIM_ENV:-}" ]]; then
+    PREDSIM_ENV="$HOME/.predsim/env.sh"
+    [[ -e "$HOME/.predsim/env-$NODE_ARCH.sh" ]] && PREDSIM_ENV="$HOME/.predsim/env-$NODE_ARCH.sh"
+fi
 PREDSIM_SCRIPT="${PREDSIM_SCRIPT:-main}"
 
 [[ -f "$PREDSIM_ENV" ]] || { echo "ERROR: $PREDSIM_ENV not found; run bunya/install_predsim.slurm first" >&2; exit 1; }
 [[ -x "$PREDSIM_DIR/linux/run_predsim.sh" ]] || { echo "ERROR: $PREDSIM_DIR is not a linux/cleancurvev4 checkout" >&2; exit 1; }
 
-echo "== $(date -Is) job ${SLURM_JOB_ID:-none} on $(hostname) ($(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2)), ${SLURM_CPUS_PER_TASK:-?} CPUs"
+echo "== $(date -Is) job ${SLURM_JOB_ID:-none} on $(hostname) ($NODE_ARCH:$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2)), ${SLURM_CPUS_PER_TASK:-?} CPUs"
+echo "== env: $PREDSIM_ENV -> $(readlink -f "$PREDSIM_ENV")"
 exec "$PREDSIM_DIR/linux/run_predsim.sh" --env "$PREDSIM_ENV" --script "$PREDSIM_SCRIPT"

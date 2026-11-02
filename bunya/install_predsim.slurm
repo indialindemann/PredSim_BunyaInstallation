@@ -15,6 +15,8 @@
 #   sbatch bunya/install_predsim.slurm                       # default (versions.env)
 #   sbatch --export=ALL,CASADI_MODE=source bunya/install_predsim.slurm
 #   sbatch --account=a_xxxx bunya/install_predsim.slurm      # if your default account differs
+#   sbatch --constraint=epyc4 bunya/install_predsim.slurm    # extra stack tuned for epyc4 (after the epyc3 one)
+#   bunya/install_all_arches.sh                              # epyc3, then epyc4 + epyc5 tuned stacks
 #
 # Everything goes to ~/predsim-deps/ (OpenSim + OpenBLAS shared in
 # ~/predsim-deps/bunya_opensim-<ver>, each CasADi mode in its own stack dir),
@@ -22,8 +24,11 @@
 # ~/.predsim/env.sh is pointed at the new stack. ~1.5 h on 16 cores; re-running
 # only redoes what changed. Progress: tail -f predsim-install-<jobid>.out
 #
-# Runs on a Zen3 (epyc3) node on purpose: Bunya's modules are built per CPU
-# generation, and Zen3 builds also run on the Zen4/Zen5 nodes.
+# Runs on a Zen3 (epyc3) node by default: Bunya's modules are built per CPU
+# generation, and Zen3 builds also run on the Zen4/Zen5 nodes. That stack
+# becomes ~/.predsim/env.sh. Submitting with --constraint=epyc4/epyc5 builds an
+# additional stack tuned for that CPU (~/.predsim/env-epyc4.sh etc.), which
+# bunya/run_predsim.slurm uses automatically on those nodes.
 #
 # Needs: GitHub SSH key on Bunya with access to indialindemann/PredSim.
 
