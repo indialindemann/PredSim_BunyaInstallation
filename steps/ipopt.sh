@@ -15,6 +15,12 @@ step_main() {
     log "MUMPS (ThirdParty-Mumps $MUMPS_TP_TAG), BLAS=$blas, METIS=${SITE_METIS_LFLAGS:-none}"
     git_checkout https://github.com/coin-or-tools/ThirdParty-Mumps.git "$MUMPS_TP_TAG" "$src/mumps"
     ( cd "$src/mumps" && ./get.Mumps )
+    # MUMPS_OPENMP=1 (or SITE_MUMPS_OPENMP=1): build MUMPS with OpenMP, so its
+    # factorisation uses OMP_NUM_THREADS threads (BLAS threads come from
+    # OPENBLAS_NUM_THREADS either way). Off by default.
+    local omp_args=(--disable-openmp)
+    [[ "${MUMPS_OPENMP:-${SITE_MUMPS_OPENMP:-0}}" == 1 ]] && omp_args=(--enable-openmp)
+    log "MUMPS OpenMP: ${omp_args[*]}"
     local metis_args=()
     if [[ -n "${SITE_METIS_LFLAGS:-}" ]]; then
         metis_args=(--with-metis --with-metis-lflags="$SITE_METIS_LFLAGS" --with-metis-cflags="${SITE_METIS_CFLAGS:-}")
@@ -22,7 +28,7 @@ step_main() {
         metis_args=(--without-metis)
     fi
     ( cd "$src/mumps" && ./configure --prefix="$inst" --disable-static \
-        --with-lapack --with-lapack-lflags="$lapack" "${metis_args[@]}" \
+        --with-lapack --with-lapack-lflags="$lapack" "${metis_args[@]}" "${omp_args[@]}" \
         && make -j"$SITE_JOBS" && make install )
 
     log "Ipopt $IPOPT_TAG"
