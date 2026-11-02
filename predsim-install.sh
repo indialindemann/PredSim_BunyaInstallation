@@ -14,6 +14,8 @@
 #   --force              rerun steps even if already done
 #   --activate           point ~/.predsim/env.sh at this stack when done
 #   --list               list steps and their state, then exit
+#   --restamp STEPS      mark already-completed steps (state 'stale') as current
+#                        without re-running them, e.g. after a comment-only edit
 #   -h, --help
 #
 # Each step logs to <prefix>/logs/<step>.log and writes a done-marker
@@ -36,6 +38,7 @@ FROM=""
 FORCE=0
 ACTIVATE=0
 LIST=0
+RESTAMP=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -48,7 +51,8 @@ while [[ $# -gt 0 ]]; do
         --force)       FORCE=1; shift ;;
         --activate)    ACTIVATE=1; shift ;;
         --list)        LIST=1; shift ;;
-        -h|--help)     sed -n '2,22p' "$0"; exit 0 ;;
+        --restamp)     RESTAMP="$2"; shift 2 ;;
+        -h|--help)     sed -n '2,24p' "$0"; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
 done
@@ -70,20 +74,32 @@ STACK_ID="${SITE}_casadi-${CASADI_VERSION}-${CASADI_MODE}_opensim-${OPENSIM_TAG}
 PREFIX="${PREFIX:-$HOME/predsim-deps/$STACK_ID}"
 PREDSIM_CACHE="${PREDSIM_CACHE:-$HOME/predsim-deps/.cache}"
 BUILD_ROOT="$PREFIX/build"
-export INSTALLER_DIR SITE SITE_FILE CASADI_MODE STACK_ID PREFIX PREDSIM_DIR PREDSIM_CACHE BUILD_ROOT
+# OpenSim (+ its SWIG and Geometry) does not depend on the CasADi mode and takes
+# ~1 h to build, so it lives in a prefix shared by all stacks of this site.
+OPENSIM_PREFIX="${OPENSIM_PREFIX:-$HOME/predsim-deps/${SITE}_opensim-${OPENSIM_TAG}}"
+export INSTALLER_DIR SITE SITE_FILE CASADI_MODE STACK_ID PREFIX PREDSIM_DIR PREDSIM_CACHE BUILD_ROOT OPENSIM_PREFIX
 
 # Ordered steps; a step script may define step_applies() to opt out.
 STEPS=(preflight python ipopt casadi swig opensim geometry opensimad predsim matlab-config verify)
 
 step_file() { echo "$INSTALLER_DIR/steps/$1.sh"; }
 
+# Steps whose script sets STEP_SHARED=1 install into $OPENSIM_PREFIX and keep
+# their done-marker there, so every CasADi mode reuses one OpenSim build.
+step_shared() { ( source "$(step_file "$1")"; [[ "${STEP_SHARED:-0}" == 1 ]] ); }
+step_marker() {
+    if step_shared "$1"; then echo "$OPENSIM_PREFIX/.done/$1"; else echo "$PREFIX/.done/$1"; fi
+}
+
 step_hash() {
-    cat "$(step_file "$1")" "$INSTALLER_DIR/versions.env" "$SITE_FILE" "$INSTALLER_DIR/lib/common.sh" \
-        <(echo "$CASADI_MODE $PREFIX") | sha1sum | cut -c1-12
+    local key="$CASADI_MODE $PREFIX"
+    step_shared "$1" && key="$OPENSIM_PREFIX"
+    cat "$(step_file "$1")" "$INSTALLER_DIR/versions.env" "$SITE_FILE" \
+        <(echo "$key") | sha1sum | cut -c1-12
 }
 
 step_state() {
-    local s="$1" marker="$PREFIX/.done/$1"
+    local s="$1" marker; marker="$(step_marker "$1")"
     if ! ( source "$(step_file "$s")"; ! declare -F step_applies >/dev/null || step_applies ); then
         echo skip
     elif [[ -f "$marker" && "$(cat "$marker")" == "$(step_hash "$s")" ]]; then
@@ -95,16 +111,28 @@ step_state() {
     fi
 }
 
+if [[ -n "$RESTAMP" ]]; then
+    IFS=, read -r -a rs <<< "$RESTAMP"
+    for s in "${rs[@]}"; do
+        [[ "$(step_state "$s")" == stale ]] || die "$s is not 'stale' (only completed steps can be restamped)"
+        step_hash "$s" > "$(step_marker "$s")"
+        echo "restamped $s"
+    done
+    exit 0
+fi
+
 if [[ $LIST -eq 1 ]]; then
     echo "site=$SITE  casadi=$CASADI_MODE  prefix=$PREFIX"
+    echo "shared opensim prefix=$OPENSIM_PREFIX"
     for s in "${STEPS[@]}"; do printf '  %-14s %s\n' "$s" "$(step_state "$s")"; done
     exit 0
 fi
 
-mkdir -p "$PREFIX/logs" "$PREFIX/.done" "$BUILD_ROOT" "$PREDSIM_CACHE"
+mkdir -p "$PREFIX/logs" "$PREFIX/.done" "$BUILD_ROOT" "$PREDSIM_CACHE" "$OPENSIM_PREFIX/.done" "$OPENSIM_PREFIX/build"
 log "PredSim install: site=$SITE ($SITE_DESC)"
 log "stack=$STACK_ID"
 log "prefix=$PREFIX"
+log "opensim prefix (shared)=$OPENSIM_PREFIX"
 
 started=0
 [[ -z "$FROM" ]] && started=1
@@ -132,7 +160,7 @@ for s in "${STEPS[@]}"; do
     set -e
     wait
     [[ $rc -eq 0 ]] || die "step '$s' failed (exit $rc); see $PREFIX/logs/$s.log"
-    step_hash "$s" > "$PREFIX/.done/$s"
+    step_hash "$s" > "$(step_marker "$s")"
 done
 
 if [[ $ACTIVATE -eq 1 ]]; then

@@ -24,13 +24,11 @@ step_main() {
         rm -rf "$src"; extract_zip "$BUILD_ROOT/$zip" "$src"
         grep -q 'option(SWIG_IMPORT "Import SWIG" ON)' "$src/CMakeLists.txt" \
             || die "$zip does not have SWIG_IMPORT=ON; it would need SWIG"
-        local gcclib; gcclib="$(dirname "$($CXX -print-file-name=libstdc++.so)")"
         PKG_CONFIG_PATH="$PREFIX/ipopt/lib/pkgconfig" cmake -S "$src" -B "$src/build" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_FLAGS_RELEASE="$SITE_OPT_FLAGS -DNDEBUG" \
             -DCMAKE_CXX_FLAGS_RELEASE="$SITE_OPT_FLAGS -DNDEBUG" \
-            -DCMAKE_INSTALL_PREFIX="$inst" \
-            -DCMAKE_INSTALL_RPATH="\$ORIGIN;$PREFIX/ipopt/lib;$(site_blas_dir);$gcclib" \
+            -DCMAKE_INSTALL_PREFIX="$PREFIX" \
             -DWITH_SELFCONTAINED=ON \
             -DWITH_MATLAB=ON -DMATLAB_ROOT="$MATLAB_ROOT" \
             -DWITH_PYTHON=OFF \
@@ -39,7 +37,10 @@ step_main() {
             -DWITH_THREAD=ON -DWITH_DEEPBIND=ON \
             -DWITH_EXAMPLES=OFF -DWITH_COMMON=OFF
         cmake --build "$src/build" --parallel "$SITE_JOBS"
+        # WITH_SELFCONTAINED installs into <prefix>/casadi with RPATH=$ORIGIN, so
+        # ship our Ipopt/MUMPS next to it (their own RPATHs reach OpenBLAS/gfortran).
         cmake --install "$src/build"
+        cp -a "$PREFIX"/ipopt/lib/libipopt.so* "$PREFIX"/ipopt/lib/libcoinmumps.so* "$inst/"
     fi
 
     [[ -f "$inst/casadiMEX.mexa64" && -d "$inst/+casadi" ]] || die "casadiMEX.mexa64 / +casadi missing in $inst"

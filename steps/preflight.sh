@@ -32,9 +32,9 @@ step_main() {
             || die "no GitHub SSH access (needed to clone $PREDSIM_REPO). Add this machine's SSH key to GitHub."
     fi
 
-    if [[ "$CASADI_MODE" == source ]]; then
-        site_blas_dir >/dev/null || die "site BLAS not available"
-        log "BLAS dir = $(site_blas_dir)"
-    fi
+    # OpenBLAS: opensimAD's recorder libraries always need it; source mode also
+    # links Ipopt/MUMPS against it.
+    site_blas_dir >/dev/null || die "site BLAS (OpenBLAS) not available"
+    log "BLAS dir = $(site_blas_dir)"
     log "preflight OK"
 }

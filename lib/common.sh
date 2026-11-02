@@ -46,6 +46,10 @@ git_checkout() {
         git -C "$dir" remote add origin "$url"
     fi
     git -C "$dir" fetch -q --depth 1 origin "$ref" || die "git fetch $url $ref failed"
+    # same commit already checked out: keep in-tree build dirs (incremental rebuild)
+    if [[ "$(git -C "$dir" rev-parse -q --verify HEAD 2>/dev/null)" == "$(git -C "$dir" rev-parse FETCH_HEAD)" ]]; then
+        return 0
+    fi
     git -C "$dir" checkout -q --force FETCH_HEAD
     git -C "$dir" clean -qfdx
 }

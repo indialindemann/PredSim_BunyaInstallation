@@ -10,6 +10,25 @@ step_main() {
         || die "opensimAD download is not a gzip archive (SourceForge returned HTML?). Delete $PREDSIM_CACHE/opensimad-linux.tar.gz and retry."
     tar -xzf "$BUILD_ROOT/opensimad-linux.tar.gz" -C "$dest"
     # archive contains linux/{include,lib}
-    [[ -f "$dest/linux/lib/libosimSimulation_recorder.so" ]] || die "unexpected opensimAD archive layout in $dest"
+    local lib="$dest/linux/lib"
+    [[ -f "$lib/libosimSimulation_recorder.so" ]] || die "unexpected opensimAD archive layout in $dest"
+
+    # The SimTK recorder libs need libopenblas.so.0 but carry no RUNPATH, so they
+    # only worked with a global LD_LIBRARY_PATH. Give them $ORIGIN and put the
+    # site OpenBLAS next to them. (opensimAD runs them in a separate process,
+    # not inside MATLAB, so MATLAB's MKL is not involved.)
+    ln -sfn "$(site_blas_dir)/libopenblas.so.0" "$lib/libopenblas.so.0"
+    local f
+    for f in "$lib"/*.so*; do
+        [[ -L "$f" ]] && continue
+        if ! readelf -d "$f" | grep -qE "RUNPATH|RPATH"; then
+            "$PREFIX/python/bin/patchelf" --set-rpath '$ORIGIN' "$f"
+        fi
+    done
+    for f in "$lib"/*_recorder.so; do
+        if env -u LD_LIBRARY_PATH ldd "$f" | grep -q "not found"; then
+            env -u LD_LIBRARY_PATH ldd "$f" | grep "not found"; die "$f has unresolved libraries"
+        fi
+    done
     log "EBROOTOPENSIMAD=$dest/linux"
 }
