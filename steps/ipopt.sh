@@ -4,22 +4,26 @@
 step_applies() { [[ "$CASADI_MODE" == source ]]; }
 
 step_main() {
-    local blas; blas="$(site_blas_dir)"
     local inst="$PREFIX/ipopt" src="$BUILD_ROOT/ipopt-src"
+    # MUMPS_OPENMP=1 (--mumps-openmp): MUMPS with OpenMP, so its factorisation
+    # uses OMP_NUM_THREADS threads. It must link an OpenMP OpenBLAS (see
+    # build_openblas_omp in lib/common.sh); the pthreads one gives wrong results.
+    local omp_args=(--disable-openmp) blas lib=openblas
+    if [[ "${MUMPS_OPENMP:-0}" == 1 ]]; then
+        omp_args=(--enable-openmp) blas="$PREFIX/openblas-omp/lib" lib=openblas_omp
+        build_openblas_omp "$PREFIX/openblas-omp"
+    else
+        blas="$(site_blas_dir)"
+    fi
     local gcclib; gcclib="$(dirname "$($FC -print-file-name=libgfortran.so)")"
     local rpath="-Wl,-rpath,$inst/lib -Wl,-rpath,$blas -Wl,-rpath,$gcclib"
     export CFLAGS="$SITE_OPT_FLAGS -DNDEBUG" CXXFLAGS="$SITE_OPT_FLAGS -DNDEBUG" FFLAGS="$SITE_OPT_FLAGS"
     export FCFLAGS="$FFLAGS" LDFLAGS="$rpath"
-    local lapack="-L$blas -lopenblas"
+    local lapack="-L$blas -l$lib"
 
     log "MUMPS (ThirdParty-Mumps $MUMPS_TP_TAG), BLAS=$blas, METIS=${SITE_METIS_LFLAGS:-none}"
     git_checkout https://github.com/coin-or-tools/ThirdParty-Mumps.git "$MUMPS_TP_TAG" "$src/mumps"
     ( cd "$src/mumps" && ./get.Mumps )
-    # MUMPS_OPENMP=1 (or SITE_MUMPS_OPENMP=1): build MUMPS with OpenMP, so its
-    # factorisation uses OMP_NUM_THREADS threads (BLAS threads come from
-    # OPENBLAS_NUM_THREADS either way). Off by default.
-    local omp_args=(--disable-openmp)
-    [[ "${MUMPS_OPENMP:-${SITE_MUMPS_OPENMP:-0}}" == 1 ]] && omp_args=(--enable-openmp)
     log "MUMPS OpenMP: ${omp_args[*]}"
     local metis_args=()
     if [[ -n "${SITE_METIS_LFLAGS:-}" ]]; then
@@ -42,7 +46,7 @@ step_main() {
     # libtool drops -Wl,-rpath for module libraries (e.g. METIS on Bunya); bake
     # the resolved dependency dirs in so MATLAB (no module env) finds them too.
     bake_rpath "$inst"/lib/libcoinmumps.so.* "$inst"/lib/libipopt.so.*
-    ldd "$inst/lib/libipopt.so" | grep -E "mumps|openblas|metis|gfortran"
+    ldd "$inst/lib/libipopt.so" | grep -E "mumps|openblas|metis|gfortran|gomp"
     local f bad
     for f in "$inst"/lib/libcoinmumps.so "$inst"/lib/libipopt.so; do
         bad="$(ldd_unresolved "$f")"

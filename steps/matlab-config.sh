@@ -32,6 +32,14 @@ export PATH="$PREFIX/python/bin:\$PATH"
 export OMP_NUM_THREADS="\${OMP_NUM_THREADS:-1}"
 export OPENBLAS_NUM_THREADS="\${OPENBLAS_NUM_THREADS:-1}"
 EOF
+    if [[ -f "$PREFIX/hsl/lib/libhsl.so" ]]; then
+        cat >> "$PREFIX/env.sh" <<EOF
+# CoinHSL (--hsl): PredSim's solve_NLPSOL uses Ipopt linear_solver=ma97 when
+# this file exists. PREDSIM_HSL_LIB= (set but empty) falls back to MUMPS.
+# MA97 threads: OMP_NUM_THREADS.
+export PREDSIM_HSL_LIB="\${PREDSIM_HSL_LIB-$PREFIX/hsl/lib/libhsl.so}"
+EOF
+    fi
     # the venv's python must win (it has casadi for opensimAD's genF.py)
     ( source "$PREFIX/env.sh" >/dev/null 2>&1; [[ "$(command -v python)" == "$PREFIX/python/bin/python" ]] ) \
         || die "env.sh: 'python' does not resolve to $PREFIX/python/bin/python"
