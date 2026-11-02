@@ -7,6 +7,7 @@ directory, on **UQ's Bunya HPC** or a local Ubuntu workstation.
 - [Install on Bunya](#install-on-bunya) (most users)
 - [Install on a local Ubuntu workstation](#install-on-a-local-ubuntu-workstation)
 - [How it works](#how-it-works)
+- [Benchmark findings](BENCHMARKS.md): what was measured, why single-threaded is as fast as multithreaded
 
 ---
 
@@ -104,8 +105,9 @@ Bunya's `general` partition has three CPU types (`epyc3`, `epyc4`, `epyc5`),
 all at the same charge rate.
 
 - **Do I need a separate install per CPU type?** No. The one install is built on
-  epyc3 and runs on all three. CPU-tuned builds were tested and were slower,
-  so they aren't offered.
+  epyc3 and runs on all three. CPU-tuned builds aren't offered: the tuned
+  builds are source mode, and their earlier timings were void (Bunya
+  source-mode BLAS bug, see BENCHMARKS.md).
 - **Is it automatic?** Yes. Nothing to choose at install time.
 - **Do I have to request a CPU type when running?** No. `run_predsim.slurm`
   *prefers* epyc4 (`--prefer=epyc4`), the fastest type for PredSim. If no
@@ -130,9 +132,31 @@ sbatch --export=ALL,CASADI_MODE=source bunya/install_predsim.slurm
 ```
 
 This compiles CasADi, Ipopt and MUMPS instead of using the official CasADi
-binaries. On Bunya it was no faster (slightly slower on epyc3), so the default
-stays prebuilt. On the Ubuntu workstation source is about 10% faster and is
+binaries. **Source stacks installed on Bunya before 3 Nov 2026 give wrong
+results** (BLAS errors, diverging solves; see [BENCHMARKS.md](BENCHMARKS.md#6-multithreaded-mumps)).
+Rerun this command to rebuild one. The default stays prebuilt. With the fix,
+source is 16% faster on epyc3 but 7% slower on epyc4, where jobs normally run. On the Ubuntu workstation source is about 10% faster and is
 the default there (see [CasADi](#casadi-prebuilt-vs-source)).
+
+### Optional: HSL MA97 linear solver (as on Windows)
+
+The Windows PredSim uses HSL's MA97 instead of MUMPS when CoinHSL is
+installed. To do the same on Linux:
+
+1. Request CoinHSL (free for academic use) at
+   <https://licences.stfc.ac.uk/product/coin-hsl>. Download the **source**
+   archive `coinhsl-<version>.tar.gz` (or the `x86_64-linux-gnu` binary) and copy it to Bunya.
+2. Add it to your install (about 10 minutes):
+
+   ```bash
+   cd ~/PredSim_BunyaInstallation
+   sbatch --export=ALL,PREDSIM_INSTALL_ARGS="--hsl $HOME/coinhsl-2024.05.15.tar.gz" bunya/install_predsim.slurm
+   ```
+
+PredSim then prints `Using HSL linear solver: ma97`. MA97's threads come from
+`OMP_NUM_THREADS` (default 1). To go back to MUMPS without reinstalling, set
+`PREDSIM_HSL_LIB=` (empty), e.g. `sbatch --export=ALL,PREDSIM_HSL_LIB= ...`.
+Benchmark: see [BENCHMARKS.md](BENCHMARKS.md#hsl-ma97).
 
 ### Bunya troubleshooting
 
@@ -225,7 +249,8 @@ builds with `SWIG_IMPORT=ON`, so **neither mode needs SWIG**.
 
 The default is set per site from benchmark results: **source on the Ubuntu
 workstation** (about 10% faster, all in MUMPS) and **prebuilt on Bunya**
-(fastest or tied on every node type). To compare stacks on fixed work:
+(7% faster on epyc4, where jobs normally run; source is 16% faster on
+epyc3). To compare stacks on fixed work, submit the jobs together:
 
 ```bash
 PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackA>/env.sh --script linux/bench/bench_predsim
@@ -251,8 +276,9 @@ Bunya's modules are built separately for each CPU generation
 Code built on a newer CPU doesn't run on an older one, so everything is
 built on epyc3 (`--constraint=epyc3` in the install job). This follows the
 RCC guidance in the [Bunya user guide](https://github.com/UQ-RCC/hpc-docs/blob/main/guides/Bunya-User-Guide.md#how-to-build-your-own-software).
-Builds tuned for epyc4/epyc5 (`-march=znver4`) were benchmarked and were
-slower than the portable build, so they aren't offered.
+Builds tuned for epyc4/epyc5 (`-march=znver4`) were benchmarked, but those
+source-mode timings are void (see [BENCHMARKS.md](BENCHMARKS.md#4-cpu-types-on-bunya)),
+so tuned builds aren't offered.
 
 ### Threads (`S.solver.N_threads`) and compiler optimisation
 
@@ -281,10 +307,9 @@ cheaper, so keep `expand = true` and 2 CPUs. With `expand = false`, `-O3`
 doesn't help: the time goes to CasADi evaluating the unexpanded graph around
 the external function, not to the function itself.
 
-Multithreaded MUMPS doesn't help either. Threaded OpenBLAS (`OPENBLAS_NUM_THREADS`
-= `N_threads`) made Ipopt's own time slower (2.6–2.9 s → 3.1–4.0 s per
-iteration). MUMPS built with OpenMP picked up MATLAB's MKL BLAS and produced
-wrong results (`MKL ERROR: Parameter 11 was incorrect on entry to DTRSM`).
+Multithreaded MUMPS:
+- **Threaded OpenBLAS** (`OPENBLAS_NUM_THREADS` = `N_threads`) made Ipopt's own time slower (2.6–2.9 s → 3.1–4.0 s per iteration).
+- **MUMPS built with OpenMP** (`--mumps-openmp`, source mode) is faster: 16 threads take 3.69 s per iteration against 4.95 s for prebuilt at 2 CPUs, but at about 6× the fair-share charge, and results aren't exactly reproducible. Its first build gave wrong results (`MKL ERROR: Parameter 11 was incorrect on entry to DTRSM`). That was a Bunya source-mode BLAS bug, since fixed; details in [BENCHMARKS.md](BENCHMARKS.md#6-multithreaded-mumps).
 
 The CPU-type comparison above was measured with `-O0` external functions.
 
