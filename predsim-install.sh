@@ -1,0 +1,147 @@
+#!/bin/bash
+# PredSim Linux installer.
+#
+#   ./predsim-install.sh [options]
+#
+# Options:
+#   --site NAME          site config in sites/NAME.env (default: auto-detect;
+#                        override with PREDSIM_SITE). Known: ubuntu-local, bunya
+#   --casadi MODE        prebuilt | source (default from versions.env)
+#   --prefix DIR         install prefix (default ~/predsim-deps/<stack-id>)
+#   --predsim-dir DIR    PredSim checkout (default ~/PredSim)
+#   --only STEPS         comma-separated step names to run (e.g. casadi,verify)
+#   --from STEP          start at STEP, then continue
+#   --force              rerun steps even if already done
+#   --activate           point ~/.predsim/env.sh at this stack when done
+#   --list               list steps and their state, then exit
+#   -h, --help
+#
+# Each step logs to <prefix>/logs/<step>.log and writes a done-marker
+# containing a hash of its inputs, so re-running only redoes steps whose
+# script, versions or site config changed.
+set -euo pipefail
+
+INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$INSTALLER_DIR/lib/common.sh"
+# shellcheck source=versions.env
+source "$INSTALLER_DIR/versions.env"
+
+SITE="${PREDSIM_SITE:-}"
+CASADI_MODE="${CASADI_MODE:-$CASADI_MODE_DEFAULT}"
+PREFIX=""
+PREDSIM_DIR="${PREDSIM_DIR:-$HOME/PredSim}"
+ONLY=""
+FROM=""
+FORCE=0
+ACTIVATE=0
+LIST=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --site)        SITE="$2"; shift 2 ;;
+        --casadi)      CASADI_MODE="$2"; shift 2 ;;
+        --prefix)      PREFIX="$2"; shift 2 ;;
+        --predsim-dir) PREDSIM_DIR="$2"; shift 2 ;;
+        --only)        ONLY="$2"; shift 2 ;;
+        --from)        FROM="$2"; shift 2 ;;
+        --force)       FORCE=1; shift ;;
+        --activate)    ACTIVATE=1; shift ;;
+        --list)        LIST=1; shift ;;
+        -h|--help)     sed -n '2,22p' "$0"; exit 0 ;;
+        *) die "unknown option: $1 (see --help)" ;;
+    esac
+done
+
+if [[ -z "$SITE" ]]; then
+    case "$(hostname -s)" in
+        bun*) SITE=bunya ;;
+        *)    SITE=ubuntu-local ;;
+    esac
+fi
+SITE_FILE="$INSTALLER_DIR/sites/$SITE.env"
+[[ -f "$SITE_FILE" ]] || die "no site config: $SITE_FILE"
+# shellcheck source=/dev/null
+source "$SITE_FILE"
+
+[[ "$CASADI_MODE" == prebuilt || "$CASADI_MODE" == source ]] || die "--casadi must be prebuilt or source"
+
+STACK_ID="${SITE}_casadi-${CASADI_VERSION}-${CASADI_MODE}_opensim-${OPENSIM_TAG}"
+PREFIX="${PREFIX:-$HOME/predsim-deps/$STACK_ID}"
+PREDSIM_CACHE="${PREDSIM_CACHE:-$HOME/predsim-deps/.cache}"
+BUILD_ROOT="$PREFIX/build"
+export INSTALLER_DIR SITE SITE_FILE CASADI_MODE STACK_ID PREFIX PREDSIM_DIR PREDSIM_CACHE BUILD_ROOT
+
+# Ordered steps; a step script may define step_applies() to opt out.
+STEPS=(preflight python ipopt casadi swig opensim geometry opensimad predsim matlab-config verify)
+
+step_file() { echo "$INSTALLER_DIR/steps/$1.sh"; }
+
+step_hash() {
+    cat "$(step_file "$1")" "$INSTALLER_DIR/versions.env" "$SITE_FILE" "$INSTALLER_DIR/lib/common.sh" \
+        <(echo "$CASADI_MODE $PREFIX") | sha1sum | cut -c1-12
+}
+
+step_state() {
+    local s="$1" marker="$PREFIX/.done/$1"
+    if ! ( source "$(step_file "$s")"; ! declare -F step_applies >/dev/null || step_applies ); then
+        echo skip
+    elif [[ -f "$marker" && "$(cat "$marker")" == "$(step_hash "$s")" ]]; then
+        echo done
+    elif [[ -f "$marker" ]]; then
+        echo stale
+    else
+        echo todo
+    fi
+}
+
+if [[ $LIST -eq 1 ]]; then
+    echo "site=$SITE  casadi=$CASADI_MODE  prefix=$PREFIX"
+    for s in "${STEPS[@]}"; do printf '  %-14s %s\n' "$s" "$(step_state "$s")"; done
+    exit 0
+fi
+
+mkdir -p "$PREFIX/logs" "$PREFIX/.done" "$BUILD_ROOT" "$PREDSIM_CACHE"
+log "PredSim install: site=$SITE ($SITE_DESC)"
+log "stack=$STACK_ID"
+log "prefix=$PREFIX"
+
+started=0
+[[ -z "$FROM" ]] && started=1
+for s in "${STEPS[@]}"; do
+    [[ "$s" == "$FROM" ]] && started=1
+    [[ $started -eq 1 ]] || continue
+    if [[ -n "$ONLY" && ",$ONLY," != *",$s,"* ]]; then continue; fi
+    [[ -f "$(step_file "$s")" ]] || die "missing step script: $(step_file "$s")"
+
+    state="$(step_state "$s")"
+    if [[ "$state" == skip ]]; then log "-- $s: not needed for this config"; continue; fi
+    if [[ "$state" == done && $FORCE -eq 0 && "$s" != verify ]]; then log "-- $s: already done"; continue; fi
+
+    log "== $s (log: $PREFIX/logs/$s.log)"
+    set +e
+    (
+        set -euo pipefail
+        site_toolchain
+        export PATH="$PREFIX/python/bin:$PATH"   # pinned cmake from the venv
+        # shellcheck source=/dev/null
+        source "$(step_file "$s")"
+        step_main
+    ) > >(tee "$PREFIX/logs/$s.log") 2>&1
+    rc=$?
+    set -e
+    wait
+    [[ $rc -eq 0 ]] || die "step '$s' failed (exit $rc); see $PREFIX/logs/$s.log"
+    step_hash "$s" > "$PREFIX/.done/$s"
+done
+
+if [[ $ACTIVATE -eq 1 ]]; then
+    mkdir -p "$HOME/.predsim"
+    ln -sfn "$PREFIX/env.sh" "$HOME/.predsim/env.sh"
+    log "activated: ~/.predsim/env.sh -> $PREFIX/env.sh"
+elif [[ ! -e "$HOME/.predsim/env.sh" && -f "$PREFIX/env.sh" ]]; then
+    mkdir -p "$HOME/.predsim"
+    ln -sfn "$PREFIX/env.sh" "$HOME/.predsim/env.sh"
+    log "no active stack yet; activated this one"
+fi
+log "done. Run PredSim with: $PREDSIM_DIR/linux/run_predsim.sh --env $PREFIX/env.sh"

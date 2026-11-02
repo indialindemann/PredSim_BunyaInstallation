@@ -1,53 +1,88 @@
 # PredSim_BunyaInstallation
-Files that install PredSim and all its dependencies onto UQ's HPC (Bunya)
 
-*There is a documented bug using openbalas 0.3.23 that it will not interface with ipopt/mumps correctly*
- - https://github.com/OpenMathLib/OpenBLAS/issues/4005
- - https://github.com/coin-or/Ipopt/issues/665
+Installs PredSim (branch `linux/cleancurvev4`) and its dependencies on Linux,
+either on a local Ubuntu workstation or on UQ's Bunya HPC. Machine
+differences live in `sites/*.env`; the steps are identical everywhere.
 
-Please follow the instructions below to install PredSim onto Bunya. There are some manual steps that have to happen before you run the install shell script:
+## Quick start
 
-1. Download this repo files and copy the files onto bunya using scp command
-   example:
-   
-   ```scp -r "C:\Users\YOURNAME\Downloads\PredSim_BunyaInstallation" YOURNAME@bunya.rcc.uq.edu.au:/home/YOURNAME/PredSim_BunyaInstallation```
-   
-3. cd into the PredSim_BunyaInstallation folder, and run the following command
-   
-   chmod +x predsim_install.sh
-   
-4. Run the following commands
-   ```
-   cd $HOME
-   
-   mkdir -p $HOME/predsim_install/opensim_win
+```bash
+git clone -b linux git@github.com:indialindemann/PredSim_BunyaInstallation.git
+cd PredSim_BunyaInstallation
+./predsim-install.sh --list          # what will run, and what's already done
+./predsim-install.sh                 # install (site auto-detected)
+~/PredSim/linux/run_predsim.sh       # run PredSim (main.m)
+```
 
-   mkdir -p $HOME/deps/opensim-install
+Everything is installed under `~/predsim-deps/<stack-id>/`, for example
+`~/predsim-deps/ubuntu-local_casadi-3.8.2-prebuilt_opensim-4.5.2/`. The stack id
+comes from the site and versions, so different builds sit side by side.
+`~/.predsim/env.sh` points at the active one (`--activate` switches it).
+To remove a stack, `rm -rf` its folder.
 
-   cd $HOME/predsim_install/opensim_win
+Re-running is cheap: each step records a hash of its inputs and only re-runs
+when its script, `versions.env` or the site file changed (`--force` to redo).
+Logs: `~/predsim-deps/<stack-id>/logs/<step>.log`.
 
-   wget https://www.7-zip.org/a/7z2600-linux-x64.tar.xz
+## Options
 
-   tar xf 7z2600-linux-x64.tar.xz
-   ```
-5. Download the opensim installer from here: https://simtk.org/frs/?group_id=91
-   Go down to previous releases and download opensim 4.4
-6. Then copy opensim onto bunya. On your normal terminal (**not in bunya**) run the following command:
-   ```
-    scp "C:\Users\YOURNAME\Downloads\OpenSim-4.4-win64.exe" YOURNAME@bunya.rcc.uq.edu.au:/home/YOURNAME/predsim_install/opensim_win
-   ```
-8. Back to bunya. run the following commands
-   ```
-   ./7zz x OpenSim-4.4-win64.exe
-   
-   cp -r Geometry/ ~/deps/opensim-install/
-   ```
-9. Now add the ssh key from bunya to your github account and ask India to add your github account to the relevant version of PredSim. See https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+| | |
+|---|---|
+| `--site ubuntu-local\|bunya` | override auto-detection (hostname `bun*` = Bunya) |
+| `--casadi prebuilt\|source` | CasADi from the official binary package, or compiled here with `-O3 -march=native` against our own Ipopt/MUMPS (see *CasADi* below) |
+| `--only casadi,verify` / `--from opensim` | run part of the install |
+| `--prefix DIR`, `--predsim-dir DIR` | change locations |
+| `PREDSIM_VERIFY_ITERS=N` | iteration cap of the verification run (default 80) |
+| `PREDSIM_GEOMETRY_SRC=DIR` | copy OpenSim Geometry from a local folder instead of git |
 
-10. Finally, run
-    ```
-    cd $HOME/predsim_install/
-    sbatch $HOME/PredSim_BunyaInstallation/predsim_install.sh
-    ```
-    to launch a job that will install predsim with the required cores and memory. If you have an interactive session you can exit it to a login node and watch the progress with
-    ```tail -f $HOME/predsim_install/logs/predsim_install-JOBID.out```
+## Steps
+
+| Step | What |
+|---|---|
+| `preflight` | tools present; **compiler's libstdc++ not newer than MATLAB's** (otherwise MATLAB can't load OpenSim/CasADi without `LD_PRELOAD` hacks); disk; GitHub SSH |
+| `python` | venv with `casadi==<CASADI_VERSION>` (opensimAD's `genF.py`), numpy, scipy, pinned `cmake` |
+| `ipopt` | source mode only: MUMPS (METIS ordering) + Ipopt, site optimisation flags, site OpenBLAS |
+| `casadi` | prebuilt zip, or `casadi-source-v<ver>.zip` build |
+| `swig` | upstream SWIG 4.1.1 for OpenSim's Java bindings (PCRE2 built in) |
+| `opensim` | opensim-core `4.5.2` + its pinned Simbody/spdlog/docopt, Java bindings, install RPATHs |
+| `geometry` | OpenSim Geometry from opensim-models (no Windows installer / 7-Zip) |
+| `opensimad` | opensimAD recorder libraries, downloaded once (PredSim used to fetch them mid-run) |
+| `predsim` | clone `linux/cleancurvev4` if absent; an existing checkout is never touched |
+| `matlab-config` | writes `<prefix>/env.sh`, the only thing a run needs |
+| `verify` | `ldd` checks, then `PredSim/linux/verify/verify_stack.m`: CasADi+Ipopt, OpenSim, short end-to-end PredSim run |
+
+## CasADi: prebuilt vs source
+
+CasADi's MATLAB interface is generated with a patched SWIG fork. Building
+that fork is what used to need gcc 7. **CasADi's source-release archive
+(`casadi-source-v<ver>.zip`) already contains the generated wrappers and
+builds with `SWIG_IMPORT=ON`, so neither mode needs SWIG at all.**
+
+- `prebuilt` is self-contained: it bundles Ipopt/MUMPS and a symbol-isolated
+  OpenBLAS/libgfortran, so MATLAB keeps its MKL and needs no
+  `BLAS_VERSION`/`LD_PRELOAD` workarounds.
+- `source` compiles CasADi, Ipopt and MUMPS for this CPU (`SITE_OPT_FLAGS`).
+
+The default is set in `versions.env` from benchmark results; see
+`PredSim/linux/bench/`. To compare builds yourself:
+
+```bash
+PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackA>/env.sh --script linux/bench/bench_predsim
+PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackB>/env.sh --script linux/bench/bench_predsim
+python3 -I ~/PredSim/linux/bench/compare_bench.py ~/PredSim/logs/bench_predsim-*.log
+```
+
+## Sites
+
+### ubuntu-local
+Ubuntu 24.04, MATLAB R2024b (`/usr/local/MATLAB/R2024b`), gcc 12.3 in
+`/opt/gcc-12.3.0`. MATLAB R2024b's libstdc++ stops at GLIBCXX_3.4.30, and
+Ubuntu's gcc 13 would exceed it. Needs apt `libmetis-dev`, a JDK (Temurin 21)
+and, for source mode, spack `openblas@0.3.32`.
+
+### bunya
+To do: `sites/bunya.env`.
+
+## Known issues
+- OpenBLAS 0.3.23 breaks MUMPS ([OpenBLAS#4005](https://github.com/OpenMathLib/OpenBLAS/issues/4005),
+  [Ipopt#665](https://github.com/coin-or/Ipopt/issues/665)); sites use 0.3.32.
