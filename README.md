@@ -254,24 +254,39 @@ RCC guidance in the [Bunya user guide](https://github.com/UQ-RCC/hpc-docs/blob/m
 Builds tuned for epyc4/epyc5 (`-march=znver4`) were benchmarked and were
 slower than the portable build, so they aren't offered.
 
-### Threads (`S.solver.N_threads`)
+### Threads (`S.solver.N_threads`) and compiler optimisation
 
 PredSim's `OCP/solve_NLPSOL.m` (on cleancurvev4 since 21 Oct 2026) builds the
 solver with `expand = true`. That makes the solve single-threaded:
 `S.solver.N_threads` has no effect, so the run job requests one physical core.
 
-With `expand = false` threading works again, and on Bunya it was faster:
+Most of each iteration is spent in the model's external function
+`Subjects/<subject>/F_<subject>.so`, which opensimAD_linux compiles with no
+optimisation (`-O0`; on Windows opensimAD uses `/O2`). PredSim's
+`linux/run_predsim.sh` now sets `CMAKE_BUILD_TYPE=Release`, so it is compiled at
+`-O3`. **Delete `F_*.so` files built before this change once**; PredSim
+rebuilds them (about 3 minutes per model).
 
-| epyc3, 80 iterations | s / iteration | vs current | fair-share charge |
-|---|---|---|---|
-| current code (`expand = true`) | 8.4 | 1.00× | 1.00× |
-| `expand = false`, 4 threads | 6.5 | 1.29× faster | 0.77× |
-| `expand = false`, 8 threads | 6.0 | 1.41× faster | 1.18× |
-| `expand = false`, 16 threads | 4.6 | 1.85× faster | 1.62× |
+| epyc3, 80 iterations | CPUs | s / iteration | vs current | fair-share charge |
+|---|---|---|---|---|
+| current code, `-O0` external function | 2 | 8.4 | 1.00× | 1.00× |
+| **current code, `-O3` external function** | 2 | **4.7** | **1.78× faster** | **0.56×** |
+| `expand = false`, 4 threads, `-O0` | 6 | 6.5 | 1.29× faster | 2.3× |
+| `expand = false`, 8 threads, `-O0` | 10 | 6.0 | 1.41× faster | 3.5× |
+| `expand = false`, 16 threads, `-O0` | 18 | 4.6 | 1.85× faster | 4.9× |
+| `expand = false`, 4 threads, `-O3` | 6 | 7.6 | 1.11× faster | 2.7× |
 
-`expand` is set in PredSim's code, not by the installer. If you switch it to
-`false`, request `--cpus-per-task` = `N_threads + 1`, rounded up to an even
-number (Bunya allocates whole cores).
+With `-O3` the current single-threaded code is as fast as 16 threads and far
+cheaper, so keep `expand = true` and 2 CPUs. With `expand = false`, `-O3`
+doesn't help: the time goes to CasADi evaluating the unexpanded graph around
+the external function, not to the function itself.
+
+Multithreaded MUMPS doesn't help either. Threaded OpenBLAS (`OPENBLAS_NUM_THREADS`
+= `N_threads`) made Ipopt's own time slower (2.6–2.9 s → 3.1–4.0 s per
+iteration). MUMPS built with OpenMP picked up MATLAB's MKL BLAS and produced
+wrong results (`MKL ERROR: Parameter 11 was incorrect on entry to DTRSM`).
+
+The CPU-type comparison above was measured with `-O0` external functions.
 
 ### Known issues
 

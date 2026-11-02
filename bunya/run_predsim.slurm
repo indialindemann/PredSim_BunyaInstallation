@@ -28,7 +28,9 @@
 #                      core). PredSim's solve_NLPSOL uses expand=true, so the
 #                      solve is single-threaded and S.solver.N_threads has no
 #                      effect; more CPUs only cost fair share. If threading is
-#                      re-enabled (expand=false), use N_threads+1.
+#                      re-enabled (expand=false), use N_threads+1. With the
+#                      -O3 external function (set by run_predsim.sh) the
+#                      single-threaded run is as fast as 16 threads.
 #   --mem=16G          the 3D models peak at ~10 GB.
 #
 # Environment overrides (sbatch --export=ALL,VAR=value):
