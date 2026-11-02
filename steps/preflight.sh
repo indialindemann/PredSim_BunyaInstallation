@@ -20,7 +20,11 @@ step_main() {
     ml="$(glibcxx_level "$mlib")"; cl="$(glibcxx_level "$clib")"
     log "GLIBCXX: MATLAB 3.4.$ml, compiler 3.4.$cl"
     if [[ -n "$ml" && -n "$cl" && "$cl" -gt "$ml" ]]; then
-        die "compiler libstdc++ (3.4.$cl) is newer than MATLAB's (3.4.$ml). Use an older gcc in $SITE_FILE, or MATLAB will fail to load OpenSim/CasADi."
+        if [[ "${SITE_ALLOW_NEWER_LIBSTDCXX:-0}" == 1 ]]; then
+            warn "compiler libstdc++ (3.4.$cl) is newer than MATLAB's (3.4.$ml); $SITE preloads the toolchain's runtime into MATLAB (PREDSIM_MATLAB_LD_PRELOAD)"
+        else
+            die "compiler libstdc++ (3.4.$cl) is newer than MATLAB's (3.4.$ml). Use an older gcc in $SITE_FILE, or MATLAB will fail to load OpenSim/CasADi."
+        fi
     fi
 
     local avail; avail=$(df -Pk "$(dirname "$PREFIX")" | awk 'NR==2{print int($4/1048576)}')
@@ -34,7 +38,11 @@ step_main() {
 
     # OpenBLAS: opensimAD's recorder libraries always need it; source mode also
     # links Ipopt/MUMPS against it.
-    site_blas_dir >/dev/null || die "site BLAS (OpenBLAS) not available"
-    log "BLAS dir = $(site_blas_dir)"
+    if [[ "${SITE_BUILD_OPENBLAS:-0}" == 1 ]]; then
+        log "BLAS: OpenBLAS will be built (openblas step)"
+    else
+        site_blas_dir >/dev/null || die "site BLAS (OpenBLAS) not available"
+        log "BLAS dir = $(site_blas_dir)"
+    fi
     log "preflight OK"
 }

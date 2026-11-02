@@ -80,7 +80,7 @@ OPENSIM_PREFIX="${OPENSIM_PREFIX:-$HOME/predsim-deps/${SITE}_opensim-${OPENSIM_T
 export INSTALLER_DIR SITE SITE_FILE CASADI_MODE STACK_ID PREFIX PREDSIM_DIR PREDSIM_CACHE BUILD_ROOT OPENSIM_PREFIX
 
 # Ordered steps; a step script may define step_applies() to opt out.
-STEPS=(preflight python ipopt casadi swig opensim geometry opensimad predsim matlab-config verify)
+STEPS=(preflight python openblas ipopt casadi swig opensim geometry opensimad predsim matlab-config verify)
 
 step_file() { echo "$INSTALLER_DIR/steps/$1.sh"; }
 

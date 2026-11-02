@@ -11,6 +11,19 @@ step_main() {
     local src="$OPENSIM_PREFIX/build/opensim-core" deps_inst="$OPENSIM_PREFIX/opensim-deps" inst="$OPENSIM_PREFIX/opensim"
     git_checkout https://github.com/opensim-org/opensim-core.git "$OPENSIM_TAG" "$src"
 
+    # Sites that build their own OpenBLAS point Simbody's LAPACK search at it;
+    # otherwise the system LAPACK is used (OpenSim is not speed-critical here).
+    if [[ "${SITE_BUILD_OPENBLAS:-0}" == 1 ]]; then
+        export BLA_VENDOR=OpenBLAS
+        export CMAKE_PREFIX_PATH="$(dirname "$(site_blas_dir)")${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+    fi
+    local rp="" d
+    for d in "$inst" "$deps_inst/simbody" "$deps_inst/spdlog" "$deps_inst/docopt"; do
+        rp+="$d/lib;$d/lib64;"
+    done
+    rp+="$inst/sdk/lib"
+    [[ "${SITE_BUILD_OPENBLAS:-0}" == 1 ]] && rp+=";$(site_blas_dir)"
+
     log "OpenSim superbuild dependencies"
     cmake -S "$src/dependencies" -B "$src/build-deps" \
         -DCMAKE_BUILD_TYPE=Release \
@@ -24,7 +37,7 @@ step_main() {
     cmake -S "$src" -B "$src/build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="$inst" \
-        -DCMAKE_INSTALL_RPATH="$inst/lib;$inst/sdk/lib;$deps_inst/simbody/lib;$deps_inst/simbody/lib64;$deps_inst/spdlog/lib;$deps_inst/docopt/lib" \
+        -DCMAKE_INSTALL_RPATH="$rp" \
         -DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF \
         -DOPENSIM_DEPENDENCIES_DIR="$deps_inst" \
         -DOPENSIM_WITH_CASADI=OFF \
