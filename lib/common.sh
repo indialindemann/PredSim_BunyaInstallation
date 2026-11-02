@@ -84,3 +84,20 @@ ldd_unresolved() {
     env -u LD_LIBRARY_PATH ${pre:+LD_PRELOAD="${pre%:}"} ldd "$1" 2>&1 \
         | grep -E "not found|version .* not found" | grep -vE 'libmex|libmx|libut|libeng|libMatlab' || true
 }
+
+# bake_rpath FILE...: add to each file's RUNPATH the directories of all its
+# shared-library dependencies as resolved *now* (build environment, modules
+# loaded), excluding system dirs. Afterwards the files load the same libraries
+# in any process, e.g. MATLAB, which runs without module LD_LIBRARY_PATHs.
+bake_rpath() {
+    local f dirs old new
+    for f in "$@"; do
+        [[ -L "$f" ]] && continue
+        dirs="$(ldd "$f" 2>/dev/null | awk '/=> \//{print $3}' | xargs -r -n1 dirname | xargs -r -n1 realpath \
+                | grep -vE '^/(usr/)?lib(64)?(/|$)' | sort -u | paste -sd:)"
+        old="$("$PREFIX/python/bin/patchelf" --print-rpath "$f" 2>/dev/null || true)"
+        new="$(printf '%s' "${old:+$old:}$dirs" | tr ':' '\n' | awk 'NF && !seen[$0]++' | paste -sd:)"
+        [[ -n "$new" && "$new" != "$old" ]] && "$PREFIX/python/bin/patchelf" --set-rpath "$new" "$f"
+    done
+    return 0
+}

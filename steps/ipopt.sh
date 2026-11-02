@@ -33,6 +33,14 @@ step_main() {
         --with-lapack --with-lapack-lflags="$lapack" \
         && make -j"$SITE_JOBS" && make install )
 
+    # libtool drops -Wl,-rpath for module libraries (e.g. METIS on Bunya); bake
+    # the resolved dependency dirs in so MATLAB (no module env) finds them too.
+    bake_rpath "$inst"/lib/libcoinmumps.so.* "$inst"/lib/libipopt.so.*
     ldd "$inst/lib/libipopt.so" | grep -E "mumps|openblas|metis|gfortran"
+    local f bad
+    for f in "$inst"/lib/libcoinmumps.so "$inst"/lib/libipopt.so; do
+        bad="$(ldd_unresolved "$f")"
+        [[ -z "$bad" ]] || { echo "$bad"; die "$f has unresolved libraries (as MATLAB would load it)"; }
+    done
     check_ldd "$inst/lib" || die "unresolved libraries in $inst/lib"
 }
