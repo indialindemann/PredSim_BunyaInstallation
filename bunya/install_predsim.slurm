@@ -7,6 +7,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
 #SBATCH --output=predsim-install-%j.out
+#SBATCH --constraint=epyc3
 #
 # Install the PredSim Linux stack for the submitting user on UQ Bunya.
 #
@@ -20,6 +21,9 @@
 # PredSim is cloned to ~/PredSim (branch linux/cleancurvev4) if absent, and
 # ~/.predsim/env.sh is pointed at the new stack. ~1.5 h on 16 cores; re-running
 # only redoes what changed. Progress: tail -f predsim-install-<jobid>.out
+#
+# Runs on a Zen3 (epyc3) node on purpose: Bunya's modules are built per CPU
+# generation, and Zen3 builds also run on the Zen4/Zen5 nodes.
 #
 # Needs: GitHub SSH key on Bunya with access to indialindemann/PredSim.
 

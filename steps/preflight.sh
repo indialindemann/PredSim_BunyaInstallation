@@ -32,8 +32,10 @@ step_main() {
     [[ "$avail" -ge 15 ]] || die "need ~15 GB free for builds"
 
     if [[ "$PREDSIM_REPO" == git@* && ! -d "$PREDSIM_DIR/.git" ]]; then
-        ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated" \
-            || die "no GitHub SSH access (needed to clone $PREDSIM_REPO). Add this machine's SSH key to GitHub."
+        # ssh -T always exits 1 on GitHub (no shell), so check the message, not the status
+        local gh; gh="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 || true)"
+        [[ "$gh" == *"successfully authenticated"* ]] \
+            || die "no GitHub SSH access (needed to clone $PREDSIM_REPO). Add this machine's SSH key to GitHub. ($gh)"
     fi
 
     # OpenBLAS: opensimAD's recorder libraries always need it; source mode also
@@ -44,5 +46,6 @@ step_main() {
         site_blas_dir >/dev/null || die "site BLAS (OpenBLAS) not available"
         log "BLAS dir = $(site_blas_dir)"
     fi
+    if declare -F site_preflight >/dev/null; then site_preflight; fi
     log "preflight OK"
 }
