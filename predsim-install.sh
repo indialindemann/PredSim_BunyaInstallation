@@ -6,7 +6,8 @@
 # Options:
 #   --site NAME          site config in sites/NAME.env (default: auto-detect;
 #                        override with PREDSIM_SITE). Known: ubuntu-local, bunya
-#   --casadi MODE        prebuilt | source (default from versions.env)
+#   --casadi MODE        prebuilt | source (default: the site's SITE_CASADI_MODE_DEFAULT,
+#                        else versions.env)
 #   --prefix DIR         install prefix (default ~/predsim-deps/<stack-id>)
 #   --predsim-dir DIR    PredSim checkout (default ~/PredSim)
 #   --only STEPS         comma-separated step names to run (e.g. casadi,verify)
@@ -30,7 +31,7 @@ source "$INSTALLER_DIR/lib/common.sh"
 source "$INSTALLER_DIR/versions.env"
 
 SITE="${PREDSIM_SITE:-}"
-CASADI_MODE="${CASADI_MODE:-$CASADI_MODE_DEFAULT}"
+CASADI_MODE="${CASADI_MODE:-}"   # --casadi / env; else site default, else versions.env
 PREFIX=""
 PREDSIM_DIR="${PREDSIM_DIR:-$HOME/PredSim}"
 ONLY=""
@@ -68,6 +69,7 @@ SITE_FILE="$INSTALLER_DIR/sites/$SITE.env"
 # shellcheck source=/dev/null
 source "$SITE_FILE"
 
+CASADI_MODE="${CASADI_MODE:-${SITE_CASADI_MODE_DEFAULT:-$CASADI_MODE_DEFAULT}}"
 [[ "$CASADI_MODE" == prebuilt || "$CASADI_MODE" == source ]] || die "--casadi must be prebuilt or source"
 
 STACK_ID="${SITE}${SITE_VARIANT:+-$SITE_VARIANT}_casadi-${CASADI_VERSION}-${CASADI_MODE}_opensim-${OPENSIM_TAG}"
