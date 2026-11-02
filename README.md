@@ -110,7 +110,9 @@ all at the same charge rate.
 - **Do I have to request a CPU type when running?** No. `run_predsim.slurm`
   *prefers* epyc4 (`--prefer=epyc4`), the fastest type for PredSim. If no
   epyc4 node is free, the job runs on another type instead of waiting.
-- **Can I force one?** Yes: `sbatch --constraint=epyc4 ...` (or `epyc3`/`epyc5`).
+- **Can I force one?** Yes. Give both options, because Slurm uses the
+  script's `--prefer` in place of `--constraint` whenever it can:
+  `sbatch --constraint=epyc4 --prefer=epyc4 ...` (or `epyc3`/`epyc5`).
   Forcing epyc4 is faster once the job starts, but it may wait longer in the queue.
 
 Measured on the same simulation:

@@ -21,7 +21,9 @@
 #                      faster than epyc5, at the same charge rate. A preference,
 #                      not a requirement: if no epyc4 node is free the job runs
 #                      on another type instead of waiting. The one install works
-#                      on all types. Force one with --constraint=epyc3|epyc4|epyc5.
+#                      on all types. To force a type, override BOTH options,
+#                      e.g. --constraint=epyc3 --prefer=epyc3: Slurm uses
+#                      --prefer in place of --constraint whenever it can be met.
 #   --cpus-per-task=2  one physical core (Bunya counts 2 hardware threads per
 #                      core). PredSim's solve_NLPSOL uses expand=true, so the
 #                      solve is single-threaded and S.solver.N_threads has no
