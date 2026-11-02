@@ -38,8 +38,8 @@ On a Bunya login node:
 git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git ~/PredSim_BunyaInstallation && cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
 ```
 
-This submits a Slurm job (16 CPUs, 32 GB, up to 4 h, on an `epyc3` node).
-Nothing heavy runs on the login node. The job:
+This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; it takes under
+an hour). Nothing heavy runs on the login node. The job:
 
 1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`,
 2. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
@@ -78,9 +78,9 @@ sbatch ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
 | MATLAB / IPOPT log | `~/PredSim/logs/main-<timestamp>.log` |
 | Results | `~/PredSimResults/<subject>/` |
 
-The default job requests 5 CPUs, 24 GB and 7 days. That matches PredSim's
-default `S.solver.N_threads = 4` plus MATLAB's own thread. Override on the
-command line, for example:
+The default job requests one physical core (`--cpus-per-task=2`), 16 GB and
+7 days, and prefers the fastest node type (see [CPU types](#cpu-types-on-bunya)).
+Override any of these on the command line, for example:
 
 ```bash
 sbatch --time=2-00:00:00 --mem=32G ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
@@ -98,19 +98,28 @@ cd ~/PredSim_BunyaInstallation && git pull && sbatch bunya/install_predsim.slurm
 cd ~/PredSim && git pull                                                            # PredSim code
 ```
 
-### Optional: stacks tuned for newer CPUs
+### CPU types on Bunya
 
-Bunya's `general` partition mixes three AMD generations: `epyc3` (Zen3),
-`epyc4` (Zen4) and `epyc5` (Zen5). The default install targets epyc3, which
-runs on all of them. You can also build stacks tuned for the newer CPUs:
+Bunya's `general` partition has three CPU types (`epyc3`, `epyc4`, `epyc5`),
+all at the same charge rate.
 
-```bash
-cd ~/PredSim_BunyaInstallation && bunya/install_all_arches.sh   # epyc3, then epyc4 + epyc5 after it
-```
+- **Do I need a separate install per CPU type?** No. The one install is built on
+  epyc3 and runs on all three. CPU-tuned builds were tested and were slower,
+  so they aren't offered.
+- **Is it automatic?** Yes. Nothing to choose at install time.
+- **Do I have to request a CPU type when running?** No. `run_predsim.slurm`
+  *prefers* epyc4 (`--prefer=epyc4`), the fastest type for PredSim. If no
+  epyc4 node is free, the job runs on another type instead of waiting.
+- **Can I force one?** Yes: `sbatch --constraint=epyc4 ...` (or `epyc3`/`epyc5`).
+  Forcing epyc4 is faster once the job starts, but it may wait longer in the queue.
 
-`run_predsim.slurm` then automatically uses the tuned stack on whichever node
-type a job lands on. To pick a node type, add `--constraint=epyc4` (or
-`epyc3`/`epyc5`) to `sbatch`.
+Measured on the same simulation:
+
+| Node type | Time per iteration | vs epyc4 |
+|---|---|---|
+| epyc4 (EPYC 9454) | 6.8 s | fastest |
+| epyc3 (EPYC 7643) | 8.2 s | 1.2× slower |
+| epyc5 (EPYC 9745) | 9.6 s | 1.4× slower |
 
 ### Optional: CasADi built from source
 
@@ -118,15 +127,17 @@ type a job lands on. To pick a node type, add `--constraint=epyc4` (or
 sbatch --export=ALL,CASADI_MODE=source bunya/install_predsim.slurm
 ```
 
-This compiles CasADi, Ipopt and MUMPS for the node's CPU instead of using
-the official CasADi binaries (see [CasADi](#casadi-prebuilt-vs-source)).
+This compiles CasADi, Ipopt and MUMPS instead of using the official CasADi
+binaries. On Bunya it was no faster (slightly slower on epyc3), so the default
+stays prebuilt. On the Ubuntu workstation source is about 10% faster and is
+the default there (see [CasADi](#casadi-prebuilt-vs-source)).
 
 ### Bunya troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | `no GitHub SSH access` | Step 1. |
-| `shared step ... must be built first ...` | You started a tuned (`--constraint=epyc4/5`) install before the default one. Run `sbatch bunya/install_predsim.slurm` first. |
+| `install on an epyc3 node ...` | The install was submitted with another `--constraint`. Use `sbatch bunya/install_predsim.slurm` as is. |
 | Job stays `PD` (pending) | Normal when the cluster is busy. `squeue --me --start` shows the estimated start time. |
 | `verify` failed | See `~/predsim-deps/<stack>/logs/verify-matlab.log`. |
 
@@ -159,11 +170,11 @@ Everything is installed under `~/predsim-deps/`:
 
 - `<site>_opensim-<ver>/` is shared by all stacks of a site: OpenSim, its
   Geometry, SWIG, and on Bunya OpenBLAS.
-- `<site>[-<cpu>]_casadi-<ver>-<mode>_opensim-<ver>/` holds one stack each:
+- `<site>[-epyc3]_casadi-<ver>-<mode>_opensim-<ver>/` holds one stack each:
   CasADi, Ipopt/MUMPS (source mode), opensimAD, the Python venv and `env.sh`.
 
-`~/.predsim/env.sh` points at the default stack (`env-<cpu>.sh` for tuned
-Bunya stacks). To remove a stack, `rm -rf` its folder.
+`~/.predsim/env.sh` points at the default stack. To remove a stack, `rm -rf`
+its folder.
 
 Each step logs to `<stack>/logs/<step>.log` and records a hash of its inputs.
 Re-running only redoes steps whose script, `versions.env` or site file
@@ -210,8 +221,9 @@ builds with `SWIG_IMPORT=ON`, so **neither mode needs SWIG**.
 - `prebuilt` is self-contained. It bundles Ipopt/MUMPS and a symbol-isolated OpenBLAS/libgfortran, so MATLAB keeps its MKL.
 - `source` compiles CasADi, Ipopt and MUMPS (with METIS) for the CPU.
 
-The default is set in `versions.env` from benchmark results. To compare stacks
-on fixed work:
+The default is set per site from benchmark results: **source on the Ubuntu
+workstation** (about 10% faster, all in MUMPS) and **prebuilt on Bunya**
+(fastest or tied on every node type). To compare stacks on fixed work:
 
 ```bash
 PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackA>/env.sh --script linux/bench/bench_predsim
@@ -233,11 +245,20 @@ load in MATLAB unless the newer runtime is used instead.
 ### Bunya CPU generations
 
 Bunya's modules are built separately for each CPU generation
-(`/sw/auto/rocky9a/epyc3|4|5`). Code built on a newer CPU doesn't run on an
-older one, so the shared parts and the default stack are built on epyc3
-(`--constraint=epyc3` in the job script). This follows the RCC guidance in
-the [Bunya user guide](https://github.com/UQ-RCC/hpc-docs/blob/main/guides/Bunya-User-Guide.md#how-to-build-your-own-software).
-gcc 12 has no `znver5` target, so epyc5 stacks use `znver4`.
+(`/sw/auto/rocky9a/epyc3|4|5`, with some falling back to the epyc3 builds).
+Code built on a newer CPU doesn't run on an older one, so everything is
+built on epyc3 (`--constraint=epyc3` in the install job). This follows the
+RCC guidance in the [Bunya user guide](https://github.com/UQ-RCC/hpc-docs/blob/main/guides/Bunya-User-Guide.md#how-to-build-your-own-software).
+Builds tuned for epyc4/epyc5 (`-march=znver4`) were benchmarked and were
+slower than the portable build, so they aren't offered.
+
+### Threads (`S.solver.N_threads`)
+
+PredSim's `OCP/solve_NLPSOL.m` (on cleancurvev4 since 21 Oct 2026) builds the
+solver with `expand = true`. That makes the solve single-threaded:
+`S.solver.N_threads` has no effect (4, 8 and 16 threads measured the same on
+Bunya). The run job therefore requests one physical core. If `expand = false`
+is restored, threading returns; then request `N_threads + 1` CPUs.
 
 ### Known issues
 
