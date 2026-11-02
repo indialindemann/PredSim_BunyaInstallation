@@ -7,11 +7,11 @@ step_main() {
     local inst="$PREFIX/ipopt" src="$BUILD_ROOT/ipopt-src"
     # MUMPS_OPENMP=1 (--mumps-openmp): MUMPS with OpenMP, so its factorisation
     # uses OMP_NUM_THREADS threads. It must link an OpenMP OpenBLAS (see
-    # build_openblas_omp in lib/common.sh); the pthreads one gives wrong results.
+    # build_openblasomp in lib/common.sh); the pthreads one gives wrong results.
     local omp_args=(--disable-openmp) blas lib=openblas
     if [[ "${MUMPS_OPENMP:-0}" == 1 ]]; then
-        omp_args=(--enable-openmp) blas="$PREFIX/openblas-omp/lib" lib=openblas_omp
-        build_openblas_omp "$PREFIX/openblas-omp"
+        omp_args=(--enable-openmp) blas="$PREFIX/openblas-omp/lib" lib=openblasomp
+        build_openblasomp "$PREFIX/openblas-omp"
     else
         blas="$(site_blas_dir)"
     fi

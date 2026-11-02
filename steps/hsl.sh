@@ -6,7 +6,7 @@
 #   CoinHSL.v<ver>.x86_64-linux-gnu-*.tar.gz      binary: relinked here
 #
 # Both end up as $PREFIX/hsl/lib/libhsl.so, linked against an OpenMP OpenBLAS
-# (libopenblas_omp, see build_openblas_omp): MA97 calls BLAS from OpenMP
+# (libopenblasomp, see build_openblasomp): MA97 calls BLAS from OpenMP
 # threads. matlab-config then exports PREDSIM_HSL_LIB, and PredSim's
 # OCP/solve_NLPSOL.m switches Ipopt to linear_solver=ma97 (as on Windows).
 # Works with prebuilt and source CasADi (both Ipopts load hsllib at run time).
@@ -16,7 +16,7 @@ step_applies() { [[ -n "${HSL_ARCHIVE:-}" ]]; }
 step_main() {
     [[ -f "$HSL_ARCHIVE" ]] || die "HSL archive not found: $HSL_ARCHIVE"
     local omp="$PREFIX/openblas-omp" inst="$PREFIX/hsl" src="$BUILD_ROOT/hsl-src"
-    build_openblas_omp "$omp"
+    build_openblasomp "$omp"
     rm -rf "$src" "$inst"; mkdir -p "$src"
     tar -xzf "$HSL_ARCHIVE" -C "$src"
     local top; top="$(find "$src" -maxdepth 2 -name meson.build -printf '%h\n' | head -1)"
@@ -29,8 +29,8 @@ step_main() {
         local opts=() o
         o="$(cat "$top"/meson_options.txt "$top"/meson.options 2>/dev/null || true)"
         has() { grep -q "option('$1'" <<< "$o"; }
-        has libblas        && opts+=(-Dlibblas=openblas_omp -Dlibblas_path="$omp/lib")
-        has liblapack      && opts+=(-Dliblapack=openblas_omp -Dliblapack_path="$omp/lib")
+        has libblas        && opts+=(-Dlibblas=openblasomp -Dlibblas_path="$omp/lib")
+        has liblapack      && opts+=(-Dliblapack=openblasomp -Dliblapack_path="$omp/lib")
         local mlib mdir minc
         mlib="${SITE_METIS_LFLAGS:-}"; mdir="$(grep -oE -- '-L[^ ]+' <<< "$mlib" | head -1 | cut -c3-)"
         minc="$(grep -oE -- '-I[^ ]+' <<< "${SITE_METIS_CFLAGS:-}" | head -1 | cut -c3-)"
@@ -62,7 +62,7 @@ step_main() {
         for f in "$inst"/lib/*.so*; do
             [[ -L "$f" ]] && continue
             for n in $(readelf -d "$f" 2>/dev/null | sed -n 's/.*NEEDED.*\[\(libopenblas[^]]*\|libblas[^]]*\|liblapack[^]]*\)\].*/\1/p'); do
-                "$pe" --replace-needed "$n" libopenblas_omp.so.0 "$f"
+                "$pe" --replace-needed "$n" libopenblasomp.so.0 "$f"
             done
             "$pe" --set-rpath "\$ORIGIN:$omp/lib" "$f"
         done
@@ -74,8 +74,8 @@ step_main() {
     readelf -d "$inst/lib/libhsl.so" | grep NEEDED
     local bad; bad="$(ldd_unresolved "$inst/lib/libhsl.so")"
     [[ -z "$bad" ]] || { echo "$bad"; die "libhsl.so has unresolved libraries (as MATLAB would load it)"; }
-    ldd "$inst/lib/libhsl.so" | grep -q 'libopenblas_omp' \
-        || warn "libhsl.so does not use libopenblas_omp; check its BLAS (pthreads OpenBLAS is unsafe for MA97)"
+    ldd "$inst/lib/libhsl.so" | grep -q 'libopenblasomp' \
+        || warn "libhsl.so does not use libopenblasomp; check its BLAS (pthreads OpenBLAS is unsafe for MA97)"
     nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma97_factor_d' || die "libhsl.so has no MA97 (ma97_factor_d)"
     log "CoinHSL in $inst/lib/libhsl.so"
     # env.sh must gain PREDSIM_HSL_LIB: make matlab-config rerun

@@ -102,17 +102,17 @@ bake_rpath() {
     return 0
 }
 
-# build_openblas_omp DIR: OpenBLAS with USE_OPENMP=1, installed as
-# libopenblas_omp.so.0 in DIR/lib (skipped if already there). OpenMP solvers
+# build_openblasomp DIR: OpenBLAS with USE_OPENMP=1, installed as
+# libopenblasomp.so.0 in DIR/lib (skipped if already there). OpenMP solvers
 # (MUMPS --enable-openmp, HSL MA97) call BLAS from inside OpenMP parallel
 # regions, which a pthreads OpenBLAS does not support (corrupted arguments,
-# hangs). The _omp name keeps it distinct from the pthreads libopenblas.so.0
+# hangs). The "omp" name keeps it distinct from the pthreads libopenblas.so.0
 # that OpenSim's JNI loads into MATLAB first: the loader would otherwise reuse
 # that one for every later library asking for libopenblas.so.0.
 OPENBLAS_OMP_VERSION="0.3.32"
-build_openblas_omp() {
+build_openblasomp() {
     local inst="$1" ver="$OPENBLAS_OMP_VERSION"
-    if [[ -f "$inst/lib/libopenblas_omp.so.0" && "$(cat "$inst/.version" 2>/dev/null)" == "$ver" ]]; then
+    if [[ -f "$inst/lib/libopenblasomp.so.0" && "$(cat "$inst/.version" 2>/dev/null)" == "$ver" ]]; then
         log "OpenMP OpenBLAS $ver already in $inst"; return 0
     fi
     local tgz="$BUILD_ROOT/OpenBLAS-$ver.tar.gz" src="$BUILD_ROOT/OpenBLAS-$ver-omp"
@@ -123,7 +123,7 @@ build_openblas_omp() {
     make -C "$src" -j"$SITE_JOBS" CC="$CC" FC="$FC" DYNAMIC_ARCH=1 TARGET=HASWELL \
         USE_OPENMP=1 NUM_THREADS=256 LIBNAMESUFFIX=omp NO_STATIC=1 libs netlib shared >/dev/null
     make -C "$src" PREFIX="$inst" LIBNAMESUFFIX=omp NO_STATIC=1 install >/dev/null
-    [[ -f "$inst/lib/libopenblas_omp.so.0" ]] || die "libopenblas_omp.so.0 not installed in $inst/lib"
-    readelf -d "$inst/lib/libopenblas_omp.so.0" | grep -q 'libgomp' || die "OpenBLAS in $inst is not an OpenMP build"
+    [[ -f "$inst/lib/libopenblasomp.so.0" ]] || die "libopenblasomp.so.0 not installed in $inst/lib"
+    readelf -d "$inst/lib/libopenblasomp.so.0" | grep -q 'libgomp' || die "OpenBLAS in $inst is not an OpenMP build"
     echo "$ver" > "$inst/.version"
 }
