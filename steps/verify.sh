@@ -17,6 +17,10 @@ step_main() {
         --script linux/verify/verify_stack --log "$PREFIX/logs/verify-matlab.log" >/dev/null 2>&1 \
         || { tail -40 "$PREFIX/logs/verify-matlab.log"; die "MATLAB verification failed"; }
     grep -q "VERIFY PASSED" "$PREFIX/logs/verify-matlab.log" || die "verification did not report success"
+    # BLAS argument errors mean a broken linear solver even when the run
+    # "succeeds" (seen with a pthreads OpenBLAS on Bunya: the solve diverged).
+    local nerr; nerr="$(grep -cE 'MKL ERROR|On entry to [A-Z]+ parameter' "$PREFIX/logs/verify-matlab.log" || true)"
+    [[ "$nerr" == 0 ]] || { grep -m3 -E 'MKL ERROR|On entry to' "$PREFIX/logs/verify-matlab.log"; die "BLAS reported $nerr argument errors during the PredSim run: the stack's linear solver is broken"; }
     grep -E "^\[verify|EXIT:|differ|match" "$PREFIX/logs/verify-matlab.log" || true
     log "verify OK"
 }

@@ -6,11 +6,18 @@ step_applies() { [[ "$CASADI_MODE" == source ]]; }
 step_main() {
     local inst="$PREFIX/ipopt" src="$BUILD_ROOT/ipopt-src"
     # MUMPS_OPENMP=1 (--mumps-openmp): MUMPS with OpenMP, so its factorisation
-    # uses OMP_NUM_THREADS threads. It must link an OpenMP OpenBLAS (see
-    # build_openblasomp in lib/common.sh); the pthreads one gives wrong results.
+    # uses OMP_NUM_THREADS threads.
+    #
+    # BLAS: on sites that build their own OpenBLAS (Bunya), MUMPS always links
+    # the OpenMP build (libopenblasomp, see build_openblasomp in lib/common.sh).
+    # With the pthreads build, PredSim's solves inside MATLAB R2023b got
+    # "DTRSM parameter 11" errors from OpenBLAS and diverged (with or without
+    # MUMPS OpenMP, single-threaded too); the OpenMP build is clean. MUMPS's
+    # dtrsm_ binds to OpenBLAS either way (checked with LD_DEBUG=bindings).
     local omp_args=(--disable-openmp) blas lib=openblas
-    if [[ "${MUMPS_OPENMP:-0}" == 1 ]]; then
-        omp_args=(--enable-openmp) blas="$PREFIX/openblas-omp/lib" lib=openblasomp
+    [[ "${MUMPS_OPENMP:-0}" == 1 ]] && omp_args=(--enable-openmp)
+    if [[ "${MUMPS_OPENMP:-0}" == 1 || "${SITE_BUILD_OPENBLAS:-0}" == 1 ]]; then
+        blas="$PREFIX/openblas-omp/lib" lib=openblasomp
         build_openblasomp "$PREFIX/openblas-omp"
     else
         blas="$(site_blas_dir)"
@@ -53,4 +60,6 @@ step_main() {
         [[ -z "$bad" ]] || { echo "$bad"; die "$f has unresolved libraries (as MATLAB would load it)"; }
     done
     check_ldd "$inst/lib" || die "unresolved libraries in $inst/lib"
+    # the casadi step copies these libraries next to CasADi: make it rerun
+    rm -f "$PREFIX/.done/casadi"
 }
