@@ -26,8 +26,8 @@ step_main() {
             || die "$zip does not have SWIG_IMPORT=ON; it would need SWIG"
         PKG_CONFIG_PATH="$PREFIX/ipopt/lib/pkgconfig" cmake -S "$src" -B "$src/build" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS_RELEASE="$SITE_OPT_FLAGS -DNDEBUG" \
-            -DCMAKE_CXX_FLAGS_RELEASE="$SITE_OPT_FLAGS -DNDEBUG" \
+            -DCMAKE_C_FLAGS_RELEASE="${SITE_CASADI_OPT_FLAGS:-$SITE_OPT_FLAGS} -DNDEBUG" \
+            -DCMAKE_CXX_FLAGS_RELEASE="${SITE_CASADI_OPT_FLAGS:-$SITE_OPT_FLAGS} -DNDEBUG" \
             -DCMAKE_INSTALL_PREFIX="$PREFIX" \
             -DWITH_SELFCONTAINED=ON \
             -DWITH_MATLAB=ON -DMATLAB_ROOT="$MATLAB_ROOT" \

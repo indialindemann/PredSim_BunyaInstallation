@@ -33,8 +33,15 @@ step_main() {
         -DOPENSIM_WITH_CASADI=OFF
     cmake --build "$src/build-deps" --parallel "$SITE_JOBS"
 
+    # RHEL installs the dependencies' CMake configs under lib64, where OpenSim's
+    # OPENSIM_DEPENDENCIES_DIR search does not look; point at them explicitly.
+    local docopt_cfg
+    docopt_cfg="$(find "$deps_inst/docopt" -name 'docopt-config.cmake' -printf '%h\n' | head -1)"
+    [[ -n "$docopt_cfg" ]] || die "docopt-config.cmake not found under $deps_inst/docopt"
+
     log "OpenSim core $OPENSIM_TAG"
     cmake -S "$src" -B "$src/build" \
+        -Ddocopt_DIR="$docopt_cfg" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="$inst" \
         -DCMAKE_INSTALL_RPATH="$rp" \
