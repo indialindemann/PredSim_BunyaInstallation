@@ -49,7 +49,8 @@ step_main() {
     local f bad=0
     for f in casadiMEX.mexa64 libcasadi.so libcasadi_nlpsol_ipopt.so; do
         [[ -e "$inst/$f" ]] || continue
-        if ldd "$inst/$f" | grep 'not found' | grep -vE 'libmex|libmx|libut|libeng|libMatlab'; then
+        if [[ -n "$(ldd_unresolved "$inst/$f")" ]]; then
+            ldd_unresolved "$inst/$f"
             warn "$f has unresolved libraries"; bad=1
         fi
     done

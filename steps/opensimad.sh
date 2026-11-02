@@ -25,10 +25,10 @@ step_main() {
             "$PREFIX/python/bin/patchelf" --set-rpath '$ORIGIN' "$f"
         fi
     done
+    local bad
     for f in "$lib"/*_recorder.so; do
-        if env -u LD_LIBRARY_PATH ldd "$f" | grep -q "not found"; then
-            env -u LD_LIBRARY_PATH ldd "$f" | grep "not found"; die "$f has unresolved libraries"
-        fi
+        bad="$(ldd_unresolved "$f")"
+        [[ -z "$bad" ]] || { echo "$bad"; die "$f has unresolved libraries"; }
     done
     log "EBROOTOPENSIMAD=$dest/linux"
 }

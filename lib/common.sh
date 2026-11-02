@@ -72,3 +72,15 @@ check_ldd() {
     done < <(find "$dir" -type f \( -name '*.so*' -o -name '*.mexa64' \) -print0)
     return $bad
 }
+
+# ldd_unresolved FILE: print unresolved deps (or version errors) of FILE as MATLAB
+# would load it: no LD_LIBRARY_PATH, plus the site's toolchain-runtime preload
+# when the site declares one (site_matlab_preload_names). Empty output = OK.
+ldd_unresolved() {
+    local pre="" l
+    if declare -F site_matlab_preload_names >/dev/null; then
+        for l in $(site_matlab_preload_names); do pre+="$("$CXX" -print-file-name="$l"):"; done
+    fi
+    env -u LD_LIBRARY_PATH ${pre:+LD_PRELOAD="${pre%:}"} ldd "$1" 2>&1 \
+        | grep -E "not found|version .* not found" | grep -vE 'libmex|libmx|libut|libeng|libMatlab' || true
+}

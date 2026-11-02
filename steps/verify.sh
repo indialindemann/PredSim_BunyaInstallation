@@ -5,9 +5,11 @@
 step_main() {
     log "library resolution (no LD_LIBRARY_PATH)"
     local jni; jni="$(find "$OPENSIM_PREFIX/opensim" -name libosimJavaJNI.so | head -1)"
-    env -u LD_LIBRARY_PATH ldd "$jni" | grep -q "not found" && die "OpenSim JNI has unresolved libraries"
-    env -u LD_LIBRARY_PATH ldd "$PREFIX/casadi/libcasadi_nlpsol_ipopt.so" | grep -q "not found" \
-        && die "CasADi Ipopt plugin has unresolved libraries"
+    local f bad
+    for f in "$jni" "$PREFIX/casadi/libcasadi_nlpsol_ipopt.so" "$PREFIX/casadi/casadiMEX.mexa64"; do
+        bad="$(ldd_unresolved "$f")"
+        [[ -z "$bad" ]] || { echo "$bad"; die "$f has unresolved libraries (as MATLAB would load it)"; }
+    done
     log "  OK"
 
     log "MATLAB end-to-end check (log: $PREFIX/logs/verify-matlab.log)"

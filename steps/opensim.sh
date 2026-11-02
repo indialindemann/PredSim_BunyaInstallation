@@ -74,8 +74,6 @@ step_main() {
     [[ -n "$jni" ]] || die "libosimJavaJNI.so not installed under $inst"
     log "jar: $jar"
     log "jni: $jni"
-    env -u LD_LIBRARY_PATH ldd "$jni" | grep -E "not found|osim|SimTK|lapack|blas" || true
-    if env -u LD_LIBRARY_PATH ldd "$jni" | grep -q "not found"; then
-        die "libosimJavaJNI.so has unresolved dependencies without LD_LIBRARY_PATH"
-    fi
+    local bad; bad="$(ldd_unresolved "$jni")"
+    [[ -z "$bad" ]] || { echo "$bad"; die "libosimJavaJNI.so has unresolved dependencies (as MATLAB would load it)"; }
 }
