@@ -306,8 +306,11 @@ Most of each iteration is spent in the model's external function
 `Subjects/<subject>/F_<subject>.so`, which opensimAD_linux compiles with no
 optimisation (`-O0`; on Windows opensimAD uses `/O2`). PredSim's
 `linux/run_predsim.sh` now sets `CMAKE_BUILD_TYPE=Release`, so it is compiled at
-`-O3`. **Delete `F_*.so` files built before this change once**; PredSim
-rebuilds them (about 3 minutes per model).
+`-O3`, and on Bunya also with `-march=znver3` (FMA/AVX2, which every node
+type has). That flag makes each call to the function 28% faster, about 12% per
+iteration ([BENCHMARKS.md](BENCHMARKS.md#1b-cpu-flags-for-the-external-function--marchznver3)).
+**Delete `F_*.so` files built before 3 Nov 2026 once**; PredSim rebuilds them
+(about 3 minutes per model).
 
 | epyc3, 80 iterations | CPUs | s / iteration | vs current | fair-share charge |
 |---|---|---|---|---|

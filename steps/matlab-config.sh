@@ -31,6 +31,9 @@ export PATH="$PREFIX/python/bin:\$PATH"
 # oversubscribing the cores on top of that.
 export OMP_NUM_THREADS="\${OMP_NUM_THREADS:-1}"
 export OPENBLAS_NUM_THREADS="\${OPENBLAS_NUM_THREADS:-1}"
+# Compiler flags for the model's external function (F_<subject>.so), which
+# run_predsim.sh passes to its build as CFLAGS. Must suit every node that runs it.
+export PREDSIM_EXTFUN_CFLAGS="\${PREDSIM_EXTFUN_CFLAGS-${SITE_EXTFUN_CFLAGS:-}}"
 EOF
     if [[ -f "$PREFIX/hsl/lib/libhsl.so" ]]; then
         cat >> "$PREFIX/env.sh" <<EOF

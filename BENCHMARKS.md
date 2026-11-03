@@ -9,6 +9,7 @@ are from November 2026.
 | Question | Answer |
 |---|---|
 | Biggest single speed-up? | Compiling the model's external function with optimisation: **1.8× faster** (8.4 → 4.7 s per iteration). Now the default. |
+| CPU-specific flags for it? | `-march=znver3` (FMA, AVX2) makes each call 28% faster on epyc3 and epyc4, about 12% per iteration. Now the Bunya default. `-march=znver4` (AVX-512) is no better. See [section 1b](#1b-cpu-flags-for-the-external-function--marchznver3). |
 | Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL MA97](#hsl-ma97)). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
@@ -69,6 +70,44 @@ change to opensimAD or PredSim code. The environment pins cmake 3.31.6.
 **Cost:** compiling `F` takes about 170 s instead of 20 s, once per model.
 PredSim reuses an existing `F_*.so`, so **files built before the change stay
 unoptimised until deleted** (`rm Subjects/*/F_*.so`).
+
+## 1b. CPU flags for the external function (`-march=znver3`)
+
+**Question:** `-O3` alone targets generic x86-64, so `F` used no AVX or FMA
+instructions at all (0 of about 470k instructions). Would CPU-specific flags help?
+
+**Constraint:** a model's `F_<subject>.so` is one file in
+`~/PredSim/Subjects/`, built by whichever job first needs it, on whatever
+node that job lands on, then used by every node type. `-march=native` on an
+epyc4 node would emit AVX-512 and crash on epyc3. `-march=znver3` runs on
+Zen3, Zen4 and Zen5.
+
+**Method:** three builds of the same `F`, passed to CMake as `CFLAGS` with
+`CMAKE_BUILD_TYPE=Release`. Ten jobs were submitted together: the
+`bench_predsim` problem, 80 iterations, 2 CPUs, 2 repeats, each node type on
+the stack it uses by default. Each binary gives exactly the same trajectory on
+every repeat. Different binaries take different paths, because FMA rounds
+differently. That makes time per call the clean comparison; time per iteration
+also depends on the path through Ipopt.
+
+| `F` build | size | FMA instructions | AVX-512 |
+|---|---|---|---|
+| `-O3` (generic x86-64) | 2.13 MB | 0 | none |
+| `-O3 -march=znver3` | 1.52 MB | 47,478 | none |
+| `-O3 -march=znver4` | 1.46 MB | 47,479 | 586 instructions |
+
+| Node, stack | `F` build | `nlp_jac_g` per call | evals / iter | s / iteration |
+|---|---|---|---|---|
+| epyc3, source | generic | 2.18 s (2.15, 2.21) | 2.81 | 5.57 (5.29, 5.84) |
+| epyc3, source | **znver3** | **1.57 s** (1.64, 1.50) | **2.15** | 4.72 (5.35, 4.08) |
+| epyc4, prebuilt | generic | 1.56 s (1.59, 1.53) | 1.88 | 4.21 (4.32, 4.11) |
+| epyc4, prebuilt | **znver3** | **1.12 s** (1.13, 1.11) | **1.41** | **3.70** (3.72, 3.67) |
+| epyc4, prebuilt | znver4 | 1.10 s (1.10, 1.09) | 1.40 | 4.08 (4.08, 4.08) |
+
+- **znver3 cuts evaluation time by about a quarter** on both node types: `nlp_jac_g`, which calls `F`, is 28% faster. On epyc4, where Ipopt's own time was the same for both builds (2.33 vs 2.29 s), an iteration is 12% faster.
+- **On epyc3 the per-iteration figure is noisy:** three of the four jobs shared one node, and Ipopt's own time ranged from 2.1 to 3.1 s between repeats. The evaluation saving (0.66 s per iteration) is the reliable number.
+- **znver4 is no faster per call than znver3.** Its iterations were slower because Ipopt's own time was higher (2.68 s) on the same trajectory as znver3. That has nothing to do with `F` and wasn't investigated. Since znver4 would also need one `F` file per CPU type, it isn't used.
+- **Default:** `sites/bunya.env` sets `SITE_EXTFUN_CFLAGS="-march=znver3"`. The installer writes it to `env.sh` as `PREDSIM_EXTFUN_CFLAGS`, and `run_predsim.sh` passes it to the `F` build as `CFLAGS`. The Ubuntu workstation uses `-march=native` (one machine; not benchmarked). As with `-O3`, **existing `F_*.so` files keep their old flags until deleted.**
 
 ## 2. Why single-threaded is as fast as multithreaded
 
