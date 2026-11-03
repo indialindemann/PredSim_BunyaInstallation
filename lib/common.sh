@@ -126,6 +126,6 @@ build_openblasomp() {
     make -C "$src" PREFIX="$inst" LIBNAMESUFFIX=omp install >/dev/null
     [[ -f "$inst/lib/libopenblasomp.so.0" ]] || die "libopenblasomp.so.0 not installed in $inst/lib"
     [[ -f "$inst/lib/libopenblasomp.a" ]] || die "libopenblasomp.a not installed in $inst/lib"
-    readelf -d "$inst/lib/libopenblasomp.so.0" | grep -q 'libgomp' || die "OpenBLAS in $inst is not an OpenMP build"
+    readelf -d "$inst/lib/libopenblasomp.so.0" | grep 'libgomp' >/dev/null || die "OpenBLAS in $inst is not an OpenMP build"
     echo "$ver" > "$inst/.version"
 }

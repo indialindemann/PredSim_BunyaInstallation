@@ -21,6 +21,8 @@ step_main() {
     tar -xzf "$HSL_ARCHIVE" -C "$src"
     local top; top="$(find "$src" -maxdepth 2 -name meson.build -printf '%h\n' | head -1)"
     local pe="$PREFIX/python/bin/patchelf"
+    # Below, not `| grep -q`: it exits at the first match, nm or readelf then
+    # gets SIGPIPE, and pipefail reports a failure.
 
     if [[ -n "$top" ]]; then
         log "CoinHSL source build ($(basename "$HSL_ARCHIVE"))"
@@ -60,12 +62,12 @@ step_main() {
         # Without metis.h CoinHSL silently links a dummy METIS, and MA57/MA97 lose
         # that ordering.
         if [[ -n "$mlib" ]]; then
-            nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' METIS_NodeND$' \
+            nm -D --defined-only "$inst/lib/libhsl.so" | grep ' METIS_NodeND$' >/dev/null \
                 || die "libhsl.so has no static METIS (dummy ordering, or MATLAB's libmwmetis could interpose); check the meson log"
         fi
-        readelf -d "$inst/lib/libhsl.so" | grep -q 'SYMBOLIC' \
+        readelf -d "$inst/lib/libhsl.so" | grep 'SYMBOLIC' >/dev/null \
             || die "libhsl.so was not linked with -Bsymbolic"
-        nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' dgemm_$' \
+        nm -D --defined-only "$inst/lib/libhsl.so" | grep ' dgemm_$' >/dev/null \
             || die "libhsl.so has no static BLAS, so MATLAB's MKL could replace it; check the meson log"
     else
         local bin; bin="$(find "$src" -name 'libhsl.so' | head -1)"
@@ -90,10 +92,10 @@ step_main() {
     readelf -d "$inst/lib/libhsl.so" | grep NEEDED
     local bad; bad="$(ldd_unresolved "$inst/lib/libhsl.so")"
     [[ -z "$bad" ]] || { echo "$bad"; die "libhsl.so has unresolved libraries (as MATLAB would load it)"; }
-    nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' dgemm_$' || ldd "$inst/lib/libhsl.so" | grep -q 'libopenblasomp' \
+    nm -D --defined-only "$inst/lib/libhsl.so" | grep ' dgemm_$' >/dev/null || ldd "$inst/lib/libhsl.so" | grep 'libopenblasomp' >/dev/null \
         || warn "libhsl.so does not use libopenblasomp; check its BLAS (pthreads OpenBLAS is unsafe for MA97)"
-    nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma97_factor_d' || die "libhsl.so has no MA97 (ma97_factor_d)"
-    nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma57ad_' || die "libhsl.so has no MA57 (ma57ad_)"
+    nm -D --defined-only "$inst/lib/libhsl.so" | grep ' ma97_factor_d' >/dev/null || die "libhsl.so has no MA97 (ma97_factor_d)"
+    nm -D --defined-only "$inst/lib/libhsl.so" | grep ' ma57ad_' >/dev/null || die "libhsl.so has no MA57 (ma57ad_)"
     log "CoinHSL in $inst/lib/libhsl.so"
     # env.sh must gain PREDSIM_HSL_LIB: make matlab-config rerun
     rm -f "$PREFIX/.done/matlab-config"
