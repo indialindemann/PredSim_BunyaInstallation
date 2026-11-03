@@ -41,7 +41,8 @@ step_main() {
             has libmetis_version && opts+=(-Dlibmetis_version=5)
         fi
         log "meson options: ${opts[*]}"
-        ( cd "$top" && CC="$CC" FC="$FC" \
+        # Same CPU flags as the source stack's MUMPS, so the comparison is fair.
+        ( cd "$top" && CC="$CC" FC="$FC" CFLAGS="${SITE_OPT_FLAGS:-}" FFLAGS="${SITE_OPT_FLAGS:-}" \
             LDFLAGS="-Wl,-rpath,$omp/lib${mdir:+ -Wl,-rpath,$mdir}" \
             "$PREFIX/python/bin/meson" setup "$src/build" --prefix="$inst" --libdir=lib \
                 --buildtype=release "${opts[@]}" \
@@ -51,6 +52,12 @@ step_main() {
         [[ -n "$so" ]] || so="$(find "$inst/lib" -maxdepth 1 -name 'lib*hsl*.so*' | head -1)"
         [[ -n "$so" ]] || die "no libcoinhsl/libhsl built in $inst/lib"
         [[ "$(basename "$so")" == libhsl.so ]] || ln -sfn "$(basename "$so")" "$inst/lib/libhsl.so"
+        # Without metis.h CoinHSL silently links a dummy METIS, and MA57/MA97 lose
+        # that ordering.
+        if [[ -n "$mlib" ]]; then
+            readelf -d "$inst/lib/libhsl.so" | grep -q 'libmetis' \
+                || die "libhsl.so was built without METIS (dummy ordering); check the meson log"
+        fi
     else
         local bin; bin="$(find "$src" -name 'libhsl.so' | head -1)"
         [[ -n "$bin" ]] || die "$HSL_ARCHIVE has neither meson.build (source) nor libhsl.so (binary)"
@@ -77,6 +84,7 @@ step_main() {
     ldd "$inst/lib/libhsl.so" | grep -q 'libopenblasomp' \
         || warn "libhsl.so does not use libopenblasomp; check its BLAS (pthreads OpenBLAS is unsafe for MA97)"
     nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma97_factor_d' || die "libhsl.so has no MA97 (ma97_factor_d)"
+    nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma57ad_' || die "libhsl.so has no MA57 (ma57ad_)"
     log "CoinHSL in $inst/lib/libhsl.so"
     # env.sh must gain PREDSIM_HSL_LIB: make matlab-config rerun
     rm -f "$PREFIX/.done/matlab-config"
