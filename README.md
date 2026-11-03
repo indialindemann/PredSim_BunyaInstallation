@@ -296,21 +296,31 @@ Builds tuned for epyc4/epyc5 (`-march=znver4`) were benchmarked, but those
 source-mode timings are void (see [BENCHMARKS.md](BENCHMARKS.md#4-cpu-types-on-bunya)),
 so tuned builds aren't offered.
 
+### External function speed-ups
+
+Most of each iteration is spent in the model's external function,
+`Subjects/<subject>/F_<subject>.so`, which PredSim compiles on its first run of
+a model. Two changes to how it is compiled, both in `linux/run_predsim.sh`, sped it up:
+
+1. **`-O3`:** opensimAD_linux compiled it at `-O0` (Windows uses `/O2`).
+   Setting `CMAKE_BUILD_TYPE=Release` made PredSim **1.8× faster** (8.4 → 4.7 s
+   per iteration, epyc3).
+2. **`-march=znver3`** (Bunya): adds FMA/AVX2, which every Bunya node type
+   supports. Each call is **28% faster**, and an iteration 12% faster on epyc4
+   (4.21 → 3.70 s). `znver4` is no faster, and would crash on epyc3 nodes.
+
+**Delete `F_*.so` files built before 3 Nov 2026 once** (`rm
+~/PredSim/Subjects/*/F_*.so`); PredSim rebuilds them in about 3 minutes per
+model. Details: [BENCHMARKS.md sections 1 and 1b](BENCHMARKS.md#1-external-function-optimisation--o0---o3).
+
 ### Threads (`S.solver.N_threads`) and compiler optimisation
 
 PredSim's `OCP/solve_NLPSOL.m` (on cleancurvev4 since 21 Oct 2026) builds the
 solver with `expand = true`. That makes the solve single-threaded:
 `S.solver.N_threads` has no effect, so the run job requests one physical core.
 
-Most of each iteration is spent in the model's external function
-`Subjects/<subject>/F_<subject>.so`, which opensimAD_linux compiles with no
-optimisation (`-O0`; on Windows opensimAD uses `/O2`). PredSim's
-`linux/run_predsim.sh` now sets `CMAKE_BUILD_TYPE=Release`, so it is compiled at
-`-O3`, and on Bunya also with `-march=znver3` (FMA/AVX2, which every node
-type has). That flag makes each call to the function 28% faster, about 12% per
-iteration ([BENCHMARKS.md](BENCHMARKS.md#1b-cpu-flags-for-the-external-function--marchznver3)).
-**Delete `F_*.so` files built before 3 Nov 2026 once**; PredSim rebuilds them
-(about 3 minutes per model).
+The external function's compiler flags ([above](#external-function-speed-ups))
+also change how threads compare:
 
 | epyc3, 80 iterations | CPUs | s / iteration | vs current | fair-share charge |
 |---|---|---|---|---|
