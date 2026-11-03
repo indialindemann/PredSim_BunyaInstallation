@@ -21,7 +21,8 @@
 #                      faster than epyc5, at the same charge rate. A preference,
 #                      not a requirement: if no epyc4 node is free the job runs
 #                      on another type instead of waiting. The one install works
-#                      on all types. To force a type, override BOTH options,
+#                      on all types, using whichever of the two installed
+#                      stacks is faster there. To force a type, override BOTH options,
 #                      e.g. --constraint=epyc3 --prefer=epyc3: Slurm uses
 #                      --prefer in place of --constraint whenever it can be met.
 #   --cpus-per-task=2  one physical core (Bunya counts 2 hardware threads per
@@ -36,7 +37,9 @@
 # Environment overrides (sbatch --export=ALL,VAR=value):
 #   PREDSIM_SCRIPT   repo-relative MATLAB script, no .m (default: main)
 #   PREDSIM_DIR      PredSim checkout (default: ~/PredSim)
-#   PREDSIM_ENV      stack env file (default: ~/.predsim/env.sh)
+#   PREDSIM_ENV      stack env file (default: ~/.predsim/env.sh, which picks the
+#                    faster stack for this node: source on epyc3, else prebuilt)
+#   PREDSIM_CASADI_MODE  prebuilt|source: force one stack on every node type
 #
 # MATLAB output: ~/PredSim/logs/<script>-<timestamp>.log (and this job's .out).
 # Results: ~/PredSimResults/<subject>/

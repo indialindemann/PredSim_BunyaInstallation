@@ -5,22 +5,25 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
-#SBATCH --time=02:00:00
+#SBATCH --time=03:00:00
 #SBATCH --output=predsim-install-%j.out
 #SBATCH --constraint=epyc3
 #
 # Install the PredSim Linux stack for the submitting user on UQ Bunya.
 #
 #   cd ~/PredSim_BunyaInstallation
-#   sbatch bunya/install_predsim.slurm                       # default (versions.env)
-#   sbatch --export=ALL,CASADI_MODE=source bunya/install_predsim.slurm
+#   sbatch bunya/install_predsim.slurm                       # both CasADi stacks (default)
+#   sbatch --export=ALL,CASADI_MODE=prebuilt bunya/install_predsim.slurm   # just one
 #   sbatch --account=a_xxxx bunya/install_predsim.slurm      # if your default account differs
 #
 # Everything goes to ~/predsim-deps/ (OpenSim + OpenBLAS shared in
 # ~/predsim-deps/bunya_opensim-<ver>, each CasADi mode in its own stack dir),
-# PredSim is cloned to ~/PredSim (branch linux/cleancurvev4) if absent, and
-# ~/.predsim/env.sh is pointed at the new stack. Under 1 h on 16 cores (about
-# half of it the final check run); re-running only redoes what changed.
+# PredSim is cloned to ~/PredSim (branch linux/cleancurvev4) if absent.
+# By default both CasADi stacks are installed (prebuilt and source) and
+# ~/.predsim/env.sh picks one on each node it runs on: source on epyc3,
+# prebuilt elsewhere, the faster on each type (BENCHMARKS.md section 5).
+# About 1.5 h on 16 cores for a fresh install (each stack ends with a check
+# run); re-running only redoes what changed.
 # Progress: tail -f predsim-install-<jobid>.out
 #
 # Runs on a Zen3 (epyc3) node on purpose: Bunya's modules are built per CPU

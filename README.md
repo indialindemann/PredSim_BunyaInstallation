@@ -39,13 +39,13 @@ On a Bunya login node:
 git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git ~/PredSim_BunyaInstallation && cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
 ```
 
-This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; it takes under
-an hour). Nothing heavy runs on the login node. The job:
+This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; a fresh
+install takes about 1.5 hours). Nothing heavy runs on the login node. The job:
 
-1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`,
+1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`, twice: one stack with the official prebuilt CasADi and one built from source (see [Two CasADi stacks](#two-casadi-stacks-one-per-node-type)),
 2. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
-3. writes `~/.predsim/env.sh`, the one file a simulation needs,
-4. runs a check that finishes with a short PredSim simulation.
+3. writes `~/.predsim/env.sh`, the one file a simulation needs; it picks the faster stack on whichever node a job lands on,
+4. runs a check on each stack that finishes with a short PredSim simulation.
 
 If your default Slurm account isn't the one to charge, add `--account=a_xxxx` after `sbatch`.
 
@@ -125,18 +125,33 @@ Measured on the same simulation:
 | epyc3 (EPYC 7643) | 8.2 s | 1.2× slower |
 | epyc5 (EPYC 9745) | 9.6 s | 1.4× slower |
 
-### Optional: CasADi built from source
+### Two CasADi stacks, one per node type
+
+Neither CasADi build is fastest everywhere. Measured with jobs submitted
+together (s per iteration, 2 CPUs):
+
+| Node type | prebuilt | source | Used on that node |
+|---|---|---|---|
+| epyc4 (preferred) | **4.12** | 4.41 | prebuilt |
+| epyc3 | 5.34 | **4.59** | source |
+| epyc5 | not re-measured | not re-measured | prebuilt |
+
+`--prefer=epyc4` is only a preference, so jobs often land on epyc3. The
+installer therefore builds both stacks, and `~/.predsim/env.sh` is a small
+selector that reads the node's CPU model and sources the matching stack's
+`env.sh`. The log's `== stack :` line shows which one a run used. To use one
+stack everywhere:
 
 ```bash
-sbatch --export=ALL,CASADI_MODE=source bunya/install_predsim.slurm
+sbatch --export=ALL,PREDSIM_CASADI_MODE=prebuilt bunya/run_predsim.slurm
 ```
 
-This compiles CasADi, Ipopt and MUMPS instead of using the official CasADi
-binaries. **Source stacks installed on Bunya before 3 Nov 2026 give wrong
+To install only one stack, use `sbatch --export=ALL,CASADI_MODE=prebuilt
+bunya/install_predsim.slurm` (or `source`); `~/.predsim/env.sh` then points at
+that stack. **Source stacks installed on Bunya before 3 Nov 2026 give wrong
 results** (BLAS errors, diverging solves; see [BENCHMARKS.md](BENCHMARKS.md#6-multithreaded-mumps)).
-Rerun this command to rebuild one. The default stays prebuilt. With the fix,
-source is 16% faster on epyc3 but 7% slower on epyc4, where jobs normally run. On the Ubuntu workstation source is about 10% faster and is
-the default there (see [CasADi](#casadi-prebuilt-vs-source)).
+Rerunning the install rebuilds them. On the Ubuntu workstation source is
+about 10% faster on its own CPU, so it installs just that (see [CasADi](#casadi-prebuilt-vs-source)).
 
 ### Optional: HSL MA97 linear solver (as on Windows)
 
@@ -199,8 +214,9 @@ Everything is installed under `~/predsim-deps/`:
 - `<site>[-epyc3]_casadi-<ver>-<mode>_opensim-<ver>/` holds one stack each:
   CasADi, Ipopt/MUMPS (source mode), opensimAD, the Python venv and `env.sh`.
 
-`~/.predsim/env.sh` points at the default stack. To remove a stack, `rm -rf`
-its folder.
+`~/.predsim/env.sh` points at the default stack (with `--casadi both`, it
+is a selector that sources one stack per CPU type). To remove a stack,
+`rm -rf` its folder.
 
 Each step logs to `<stack>/logs/<step>.log` and records a hash of its inputs.
 Re-running only redoes steps whose script, `versions.env` or site file
@@ -212,7 +228,7 @@ current after a comment-only edit.
 | | |
 |---|---|
 | `--site bunya\|ubuntu-local` | machine config in `sites/` (the Bunya job script always passes `bunya`) |
-| `--casadi prebuilt\|source` | see below |
+| `--casadi prebuilt\|source\|both` | see below; `both` installs both stacks and a per-CPU selector (`SITE_STACK_BY_ARCH`; Bunya's default) |
 | `--only casadi,verify` / `--from opensim` | run part of the install |
 | `--list` | show steps and their state |
 | `--activate` | point `~/.predsim/env.sh` at this stack |
@@ -248,9 +264,9 @@ builds with `SWIG_IMPORT=ON`, so **neither mode needs SWIG**.
 - `source` compiles CasADi, Ipopt and MUMPS (with METIS) for the CPU.
 
 The default is set per site from benchmark results: **source on the Ubuntu
-workstation** (about 10% faster, all in MUMPS) and **prebuilt on Bunya**
-(7% faster on epyc4, where jobs normally run; source is 16% faster on
-epyc3). To compare stacks on fixed work, submit the jobs together:
+workstation** (about 10% faster, all in MUMPS) and **both on Bunya**
+(prebuilt is 7% faster on epyc4, source 16% faster on epyc3; each node uses
+its faster one). To compare stacks on fixed work, submit the jobs together:
 
 ```bash
 PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackA>/env.sh --script linux/bench/bench_predsim

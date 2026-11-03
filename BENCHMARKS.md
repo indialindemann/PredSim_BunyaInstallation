@@ -12,7 +12,7 @@ are from November 2026.
 | Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL MA97](#hsl-ma97)). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
-| Prebuilt or source CasADi? | Bunya: prebuilt, which is 7% faster on epyc4, the preferred node type. The fixed source build is 16% faster on epyc3. Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). |
+| Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). |
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
 
@@ -154,7 +154,7 @@ with prebuilt CasADi, `F` at `-O0`, 5 CPUs, 2 repeats:
 
 | | Ubuntu workstation (i7-7700) | Bunya |
 |---|---|---|
-| Faster | **source**, about 10% (Ipopt internals 2.2 vs 2.9 s per iteration) | **prebuilt** on epyc4 (the preferred node type); source on epyc3 |
+| Faster | **source**, about 10% (Ipopt internals 2.2 vs 2.9 s per iteration) | **prebuilt** on epyc4 (the preferred node type); **source** on epyc3. Both installed. |
 | Why | MUMPS with METIS ordering and `-O3 -march=native`. CasADi evaluation time is identical. | — |
 
 On Bunya the earlier source-mode timings are void because of the BLAS bug
@@ -166,8 +166,8 @@ together (current code, `F` at `-O3`, 2 CPUs, 2 repeats, s / iteration):
 | epyc4 | **4.12** (4.24, 4.00) | 4.41 (4.02, 4.79) | 2.19 / 2.27 | prebuilt, 1.07× |
 | epyc3 | 5.34 (5.62, 5.05) | **4.59** (4.58, 4.59) | 2.89 / 2.11 | source, 1.16× |
 
-- **Prebuilt stays the Bunya default:** jobs prefer epyc4, where it's as fast or faster, and it installs about 30 minutes quicker.
-- **Source is worth it** only for jobs forced onto epyc3 (`--constraint=epyc3 --prefer=epyc3`).
+- **Bunya installs both by default:** `--prefer=epyc4` is only a preference, so many jobs run on epyc3, where source saves 14% of the time. `~/.predsim/env.sh` reads the node's CPU model at job start and sources the source stack on epyc3 and the prebuilt one elsewhere (`SITE_STACK_BY_ARCH` in `sites/bunya.env`). The cost is about 30 more minutes of install and a second check run. epyc5 keeps prebuilt until the fixed source build is measured there.
+- **The external function is shared:** `F_<subject>.so` links only libc/libm, so both stacks use the same compiled file.
 - **Contention matters:** an unpaired run of the source stack earlier, with fewer jobs on the node, gave 4.31 s against 4.95 s for prebuilt. Compare stacks with jobs submitted together.
 - **Source takes a different path on epyc3 and epyc4:** its OpenBLAS picks different kernels per CPU (`DYNAMIC_ARCH`), so the rounding differs. Prebuilt took the same path on both.
 
