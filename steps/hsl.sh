@@ -5,9 +5,9 @@
 #   coinhsl-<ver>.tar.gz                          source: built here with meson
 #   CoinHSL.v<ver>.x86_64-linux-gnu-*.tar.gz      binary: relinked here
 #
-# Both end up as $PREFIX/hsl/lib/libhsl.so, linked against an OpenMP OpenBLAS
+# Both end up as $PREFIX/hsl/lib/libhsl.so with an OpenMP OpenBLAS
 # (libopenblasomp, see build_openblasomp): MA97 calls BLAS from OpenMP
-# threads. matlab-config then exports PREDSIM_HSL_LIB, and PredSim's
+# threads. The source build links it and METIS statically. matlab-config then exports PREDSIM_HSL_LIB, and PredSim's
 # OCP/solve_NLPSOL.m switches Ipopt to linear_solver=ma97 (as on Windows).
 # Works with prebuilt and source CasADi (both Ipopts load hsllib at run time).
 
@@ -40,11 +40,10 @@ step_main() {
             [[ -n "$minc" ]] && has libmetis_include && opts+=(-Dlibmetis_include="$minc")
             has libmetis_version && opts+=(-Dlibmetis_version=5)
         fi
-        # MATLAB's global symbols must not replace HSL's. MATLAB ships an ILP64
-        # libmwmetis and libmwma57: its METIS_SetDefaultOptions writes 64-bit
-        # options into HSL's 32-bit array and ma57gd_ gets the wrong integers,
-        # both segfaults. So link METIS statically and bind HSL's own symbols
-        # to itself (-Bsymbolic).
+        # MATLAB's global symbols must not replace HSL's. MATLAB's libmwmetis,
+        # libmwma57 and mkl.so use 64-bit integers and HSL 32-bit ones, so each
+        # takeover segfaulted (METIS_SetDefaultOptions, ma57gd_, DSWAP). So link
+        # METIS and BLAS statically and bind all of it to itself (-Bsymbolic).
         opts+=(-Dprefer_static=true)
         log "meson options: ${opts[*]}"
         # Same CPU flags as the source stack's MUMPS, so the comparison is fair.
@@ -63,9 +62,11 @@ step_main() {
         if [[ -n "$mlib" ]]; then
             nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' METIS_NodeND$' \
                 || die "libhsl.so has no static METIS (dummy ordering, or MATLAB's libmwmetis could interpose); check the meson log"
-            readelf -d "$inst/lib/libhsl.so" | grep -q 'SYMBOLIC' \
-                || die "libhsl.so was not linked with -Bsymbolic"
         fi
+        readelf -d "$inst/lib/libhsl.so" | grep -q 'SYMBOLIC' \
+            || die "libhsl.so was not linked with -Bsymbolic"
+        nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' dgemm_$' \
+            || die "libhsl.so has no static BLAS, so MATLAB's MKL could replace it; check the meson log"
     else
         local bin; bin="$(find "$src" -name 'libhsl.so' | head -1)"
         [[ -n "$bin" ]] || die "$HSL_ARCHIVE has neither meson.build (source) nor libhsl.so (binary)"
@@ -89,7 +90,7 @@ step_main() {
     readelf -d "$inst/lib/libhsl.so" | grep NEEDED
     local bad; bad="$(ldd_unresolved "$inst/lib/libhsl.so")"
     [[ -z "$bad" ]] || { echo "$bad"; die "libhsl.so has unresolved libraries (as MATLAB would load it)"; }
-    ldd "$inst/lib/libhsl.so" | grep -q 'libopenblasomp' \
+    nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' dgemm_$' || ldd "$inst/lib/libhsl.so" | grep -q 'libopenblasomp' \
         || warn "libhsl.so does not use libopenblasomp; check its BLAS (pthreads OpenBLAS is unsafe for MA97)"
     nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma97_factor_d' || die "libhsl.so has no MA97 (ma97_factor_d)"
     nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' ma57ad_' || die "libhsl.so has no MA57 (ma57ad_)"

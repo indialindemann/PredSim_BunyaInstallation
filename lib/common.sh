@@ -112,7 +112,8 @@ bake_rpath() {
 OPENBLAS_OMP_VERSION="0.3.32"
 build_openblasomp() {
     local inst="$1" ver="$OPENBLAS_OMP_VERSION"
-    if [[ -f "$inst/lib/libopenblasomp.so.0" && "$(cat "$inst/.version" 2>/dev/null)" == "$ver" ]]; then
+    # The static library is for CoinHSL (steps/hsl.sh).
+    if [[ -f "$inst/lib/libopenblasomp.so.0" && -f "$inst/lib/libopenblasomp.a" && "$(cat "$inst/.version" 2>/dev/null)" == "$ver" ]]; then
         log "OpenMP OpenBLAS $ver already in $inst"; return 0
     fi
     local tgz="$BUILD_ROOT/OpenBLAS-$ver.tar.gz" src="$BUILD_ROOT/OpenBLAS-$ver-omp"
@@ -121,9 +122,10 @@ build_openblasomp() {
     tar -xzf "$tgz" -C "$src" --strip-components=1
     log "building OpenMP OpenBLAS $ver (DYNAMIC_ARCH) -> $inst"
     make -C "$src" -j"$SITE_JOBS" CC="$CC" FC="$FC" DYNAMIC_ARCH=1 TARGET=HASWELL \
-        USE_OPENMP=1 NUM_THREADS=256 LIBNAMESUFFIX=omp NO_STATIC=1 libs netlib shared >/dev/null
-    make -C "$src" PREFIX="$inst" LIBNAMESUFFIX=omp NO_STATIC=1 install >/dev/null
+        USE_OPENMP=1 NUM_THREADS=256 LIBNAMESUFFIX=omp libs netlib shared >/dev/null
+    make -C "$src" PREFIX="$inst" LIBNAMESUFFIX=omp install >/dev/null
     [[ -f "$inst/lib/libopenblasomp.so.0" ]] || die "libopenblasomp.so.0 not installed in $inst/lib"
+    [[ -f "$inst/lib/libopenblasomp.a" ]] || die "libopenblasomp.a not installed in $inst/lib"
     readelf -d "$inst/lib/libopenblasomp.so.0" | grep -q 'libgomp' || die "OpenBLAS in $inst is not an OpenMP build"
     echo "$ver" > "$inst/.version"
 }
