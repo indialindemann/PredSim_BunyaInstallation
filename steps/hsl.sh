@@ -40,10 +40,16 @@ step_main() {
             [[ -n "$minc" ]] && has libmetis_include && opts+=(-Dlibmetis_include="$minc")
             has libmetis_version && opts+=(-Dlibmetis_version=5)
         fi
+        # MATLAB's global symbols must not replace HSL's. MATLAB ships an ILP64
+        # libmwmetis and libmwma57: its METIS_SetDefaultOptions writes 64-bit
+        # options into HSL's 32-bit array and ma57gd_ gets the wrong integers,
+        # both segfaults. So link METIS statically and bind HSL's own symbols
+        # to itself (-Bsymbolic).
+        opts+=(-Dprefer_static=true)
         log "meson options: ${opts[*]}"
         # Same CPU flags as the source stack's MUMPS, so the comparison is fair.
         ( cd "$top" && CC="$CC" FC="$FC" CFLAGS="${SITE_OPT_FLAGS:-}" FFLAGS="${SITE_OPT_FLAGS:-}" \
-            LDFLAGS="-Wl,-rpath,$omp/lib${mdir:+ -Wl,-rpath,$mdir}" \
+            LDFLAGS="-Wl,-Bsymbolic -Wl,-rpath,$omp/lib${mdir:+ -Wl,-rpath,$mdir}" \
             "$PREFIX/python/bin/meson" setup "$src/build" --prefix="$inst" --libdir=lib \
                 --buildtype=release "${opts[@]}" \
           && "$PREFIX/python/bin/meson" compile -C "$src/build" -j "$SITE_JOBS" \
@@ -55,8 +61,10 @@ step_main() {
         # Without metis.h CoinHSL silently links a dummy METIS, and MA57/MA97 lose
         # that ordering.
         if [[ -n "$mlib" ]]; then
-            readelf -d "$inst/lib/libhsl.so" | grep -q 'libmetis' \
-                || die "libhsl.so was built without METIS (dummy ordering); check the meson log"
+            nm -D --defined-only "$inst/lib/libhsl.so" | grep -q ' METIS_NodeND$' \
+                || die "libhsl.so has no static METIS (dummy ordering, or MATLAB's libmwmetis could interpose); check the meson log"
+            readelf -d "$inst/lib/libhsl.so" | grep -q 'SYMBOLIC' \
+                || die "libhsl.so was not linked with -Bsymbolic"
         fi
     else
         local bin; bin="$(find "$src" -name 'libhsl.so' | head -1)"
