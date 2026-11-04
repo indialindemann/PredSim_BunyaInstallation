@@ -237,7 +237,7 @@ nohup ~/PredSim/linux/run_predsim.sh > /dev/null 2>&1 &   # long run in the back
 ```
 
 CoinHSL is required here too, unless you pass `--no-hsl`: see
-[Get the CoinHSL solver](#2-get-the-coinhsl-solver). HSL's speed hasn't been
+[Get the CoinHSL solver](#2-get-the-coinhsl-solver-optional-but-highly-recommended). HSL's speed hasn't been
 benchmarked on a workstation.
 
 The local MATLAB R2024b's libstdc++ stops at GLIBCXX_3.4.30. gcc 12 matches
