@@ -153,25 +153,35 @@ results** (BLAS errors, diverging solves; see [BENCHMARKS.md](BENCHMARKS.md#6-mu
 Rerunning the install rebuilds them. On the Ubuntu workstation source is
 about 10% faster on its own CPU, so it installs just that (see [CasADi](#casadi-prebuilt-vs-source)).
 
-### Optional: HSL MA97 linear solver (as on Windows)
+### Optional: HSL MA57 and MA97 linear solvers
 
 The Windows PredSim uses HSL's MA97 instead of MUMPS when CoinHSL is
 installed. To do the same on Linux:
 
 1. Request CoinHSL (free for academic use) at
    <https://licences.stfc.ac.uk/product/coin-hsl>. Download the **source**
-   archive `coinhsl-<version>.tar.gz` (or the `x86_64-linux-gnu` binary) and copy it to Bunya.
-2. Add it to your install (about 10 minutes):
+   archive `coinhsl-<version>.tar.gz` and copy it to Bunya.
+2. Add it to your install (about 45 minutes):
 
    ```bash
    cd ~/PredSim_BunyaInstallation
    sbatch --export=ALL,PREDSIM_INSTALL_ARGS="--hsl $HOME/coinhsl-2024.05.15.tar.gz" bunya/install_predsim.slurm
    ```
 
-PredSim then prints `Using HSL linear solver: ma97`. MA97's threads come from
-`OMP_NUM_THREADS` (default 1). To go back to MUMPS without reinstalling, set
-`PREDSIM_HSL_LIB=` (empty), e.g. `sbatch --export=ALL,PREDSIM_HSL_LIB= ...`.
-Benchmark: see [BENCHMARKS.md](BENCHMARKS.md#hsl-ma97).
+PredSim then uses MA97 and prints `Using HSL linear solver: ma97`. To choose
+another solver for a job:
+
+```bash
+sbatch --export=ALL,PREDSIM_HSL_SOLVER=ma57 bunya/run_predsim.slurm       # MA57
+sbatch --cpus-per-task=4 --export=ALL,OMP_NUM_THREADS=4 bunya/run_predsim.slurm   # MA97, 4 threads
+sbatch --export=ALL,PREDSIM_HSL_LIB= bunya/run_predsim.slurm              # MUMPS
+```
+
+Per iteration, MA57 at 1 thread is about 20% faster than MUMPS on epyc3 and
+38% on epyc4 at the same CPU cost. MA97 is the fastest on epyc4 with threads,
+at much higher cost. **These are 80-iteration results, and the solvers take
+different paths, so time to a solution isn't measured yet.** See
+[BENCHMARKS.md](BENCHMARKS.md#hsl-ma97-and-ma57).
 
 ### Bunya troubleshooting
 

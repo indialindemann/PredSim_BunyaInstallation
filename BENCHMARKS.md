@@ -10,7 +10,8 @@ are from November 2026.
 |---|---|
 | Biggest single speed-up? | Compiling the model's external function with optimisation: **1.8× faster** (8.4 → 4.7 s per iteration). Now the default. |
 | CPU-specific flags for it? | `-march=znver3` (FMA, AVX2) makes each call 28% faster on epyc3 and epyc4, about 12% per iteration. Now the Bunya default. `-march=znver4` (AVX-512) is no better. See [section 1b](#1b-cpu-flags-for-the-external-function--marchznver3). |
-| Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL MA97](#hsl-ma97)). |
+| Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL](#hsl-ma97-and-ma57)). |
+| HSL instead of MUMPS? | Faster per iteration: MA57 at 1 thread cuts an iteration by about 20% on epyc3 and 38% on epyc4 at no extra CPU. MA97 is fastest on epyc4 with threads, at much higher CPU cost. Time to a solution isn't measured yet. See [HSL](#hsl-ma97-and-ma57). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
 | Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). |
@@ -270,22 +271,89 @@ epyc3, all 12 jobs on one node (bun048), 2 repeats each, `OMP_NUM_THREADS` = T:
   sbatch --cpus-per-task=16 --export=ALL,OMP_NUM_THREADS=16 bunya/run_predsim.slurm
   ```
 
-## HSL MA97
+## HSL MA97 and MA57
 
 The Windows PredSim uses Ipopt's `linear_solver = ma97` (HSL) when
 `C:\CoinHSL...\bin\libhsl.dll` exists, and MUMPS otherwise. On Linux it
 always used MUMPS: the check looked only for the Windows path. Now:
 
-- **PredSim:** `solve_NLPSOL.m` takes the library from `$PREDSIM_HSL_LIB` on Linux.
-- **Installer:** `--hsl ARCHIVE` installs CoinHSL into the stack and sets that variable. The archive is either the source tarball or the Linux binary.
-  - MA97 uses OpenMP, so it gets the OpenMP OpenBLAS too.
-  - Both prebuilt and source CasADi load `libhsl.so` at run time.
-- **CoinHSL is licensed:** download it yourself from <https://licences.stfc.ac.uk/product/coin-hsl>. It's free for academic use, and approval usually takes about a day.
+- **PredSim:** `solve_NLPSOL.m` takes the library from `$PREDSIM_HSL_LIB` on Linux, and the solver from `$PREDSIM_HSL_SOLVER` (default `ma97`).
+- **Installer:** `--hsl ARCHIVE` builds CoinHSL into each stack and sets `PREDSIM_HSL_LIB`.
+- **CoinHSL is licensed:** download it yourself from <https://licences.stfc.ac.uk/product/coin-hsl>. It's free for academic use.
 - **MATLAB's own MA57 can't be used:** `libmwma57.so` is built with 64-bit integers, and Ipopt calls it with 32-bit ones (`MA57AD ... NE has value****`).
 
-**Not benchmarked yet:** it needs a CoinHSL archive (see the README's
-"Optional: HSL MA97" section). The installer step and PredSim's support are
-in place, but untested with a real CoinHSL build.
+**Method:** CoinHSL 2024.05.15 from source, with METIS. The `bench_predsim`
+problem (about 149k variables), 80 iterations, the `znver3` external function,
+2 repeats, 36 jobs submitted together, each node type on its default stack.
+Each job had `max(2, T)` CPUs and 32 GB (peak use was about 10 GB for all).
+MA97's threads come from `OMP_NUM_THREADS`. MA57 has none of its own, so its
+threads come from BLAS (`OPENBLAS_NUM_THREADS`). No run had BLAS errors.
+
+Seconds per iteration, repeats in brackets. "Solver" is Ipopt's own time
+(total minus function evaluations, mostly the linear solver):
+
+| Node, stack | Solver | Threads | s / iteration | Solver s / iter | CPU ÷ elapsed | CPUs × s / iter |
+|---|---|---|---|---|---|---|
+| epyc3, source | MUMPS | 1 | 4.35 (4.38, 4.31) | 2.19, 2.14 | 1.0 | 8.7 |
+| | **MA57** | **1** | **3.46** (3.46, 3.47) | **1.31, 1.27** | 1.0 | **6.9** |
+| | MA57 | 4 | 3.46 (3.56, 3.36) | 1.42, 1.36 | 1.2 | 13.8 |
+| | MA57 | 8 | 3.84 (3.38, 4.29) | 1.32, 2.23 | 1.5 | 30.7 |
+| | MA57 | 16 | 3.34 (3.13, 3.55) | 1.27, 1.51 | 2.1 | 53.4 |
+| | MA97 | 1 | 4.08 (4.16, 4.00) | 1.99, 1.93 | 1.0 | 8.2 |
+| | MA97 | 4 | 3.33 (3.58, 3.08) | 1.47, 1.16 | 1.3 | 13.3 |
+| | MA97 | 8 | 3.58 (3.07, 4.10) | 1.03, 1.95 | 1.6 | 28.6 |
+| | MA97 | 16 | 4.06 (2.96, 5.17) | 1.09, 2.42 | 2.2 | 65.0 |
+| epyc4, prebuilt | MUMPS | 1 | 4.60 (3.72, 5.47) | 2.29, 3.88 | 1.0 | 9.2 |
+| | **MA57** | **1** | **2.63** (2.32, 2.93) | **0.87, 1.28** | 1.0 | **5.3** |
+| | MA57 | 4 | 2.42 (2.35, 2.49) | 0.94, 1.03 | 1.3 | 9.7 |
+| | MA57 | 8 | 2.50 (2.68, 2.31) | 1.16, 0.89 | 1.7 | 20.0 |
+| | MA57 | 16 | 2.77 (2.93, 2.62) | 1.35, 1.17 | 2.7 | 44.3 |
+| | MA97 | 1 | 3.88 (2.70, 5.05) | 1.26, 2.24 | 1.0 | 7.8 |
+| | MA97 | 4 | 2.27 (2.14, 2.41) | 0.75, 0.89 | 1.2 | 9.1 |
+| | MA97 | 8 | 2.14 (2.17, 2.12) | 0.73, 0.71 | 1.3 | 17.1 |
+| | MA97 | 16 | **2.05** (2.15, 1.95) | 0.75, 0.57 | 1.6 | 32.8 |
+
+- **HSL is a real speed-up per iteration.** Single-threaded MA57 takes about 40% of MUMPS's solver time on epyc4 and 60% on epyc3. An iteration is about 20% faster on epyc3 (4.35 → 3.46 s) and, comparing each solver's faster repeat on epyc4, about 38% faster (3.72 → 2.32 s).
+- **MA57 at 1 thread is the best value:** the lowest CPU cost per iteration on both node types.
+- **MA97 is the fastest on epyc4 when given threads** (2.05 s at 16), but costs about 6× the CPU of MA57 for 11–22% less time. It needs threads to pay off: at 1 thread it is slower than MA57 on both node types.
+- **Threaded BLAS doesn't help MA57.** Its solver time doesn't improve with threads. CPU use rises, so the extra threads mostly wait.
+- **Scaling is limited** because function evaluations (1.4–2.2 s per iteration) are serial, whichever solver runs.
+- **Noise:** several repeats differ by more than the gaps between configurations (2.70 vs 5.05 s for MA97 at 1 thread on epyc4). These jobs ran on different, busy nodes. Treat small differences as unresolved.
+
+**80 iterations can't settle which solver is best overall.** Each solver takes a
+different path. Iterates reproduce exactly between repeats, but these differ
+widely at iteration 80:
+
+| Node, stack | MUMPS | MA57, 1 thread | MA97, 1 thread |
+|---|---|---|---|
+| epyc3, source: objective / constraint violation | 67.2 / 2.4e+04 | 71.1 / 6.7e+03 | 127.3 / 2.8e+03 |
+| epyc4, prebuilt: objective / constraint violation | 71.4 / 6.9e+03 | 73.3 / 5.7e+03 | 92.6 / 7.5e+01 |
+
+MA97 has the lowest constraint violation at this point, but none of these runs
+has converged, and that gap may not last. Time to a solution needs runs to
+convergence, which haven't been done. Whether the source stack is still the
+faster one on epyc3 with HSL hasn't been measured either.
+
+### Making HSL work inside MATLAB
+
+MATLAB's global symbols replaced HSL's calls in the source stack. MATLAB's
+`libmwmetis`, `libmwma57` and `mkl.so` use 64-bit integers, and HSL uses 32-bit:
+
+| Call from `libhsl` | Went to | Result |
+|---|---|---|
+| `METIS_SetDefaultOptions` | `libmwmetis` | Segfault in METIS. Its disassembly shows 64-bit writes for 40 options, which would be 320 bytes into HSL's 160-byte array. |
+| `ma57gd_` (HSL's own routine) | `libmwma57` | Segfault |
+| `DGEMM`, `DSWAP`, `dtpsv_` | `mkl.so` | `MKL ERROR`s, then a segfault |
+| OpenMP (`GOMP_task` and others) | `libiomp5` | Restoration at iteration 1, DGEMM errors, out of memory |
+
+The source stack alone failed because of how Ipopt loads HSL. CasADi's official
+Ipopt calls `dlopen` with `RTLD_NOW | RTLD_DEEPBIND`, which makes a library
+prefer its own dependencies. Upstream Ipopt 3.14 uses plain `RTLD_NOW`.
+
+**Fix:** the source build now patches Ipopt to use `RTLD_DEEPBIND`, and `libhsl`
+links METIS and OpenBLAS statically with `-Bsymbolic`. Traces with
+`LD_DEBUG=bindings` on both stacks show no calls from `libhsl` into MATLAB's
+libraries or MKL, and OpenMP calls going to `libgomp`.
 
 ## Reproducing
 
