@@ -32,7 +32,7 @@ ssh-keygen -t ed25519 -C "$USER@bunya"      # accept the defaults
 cat ~/.ssh/id_ed25519.pub                   # paste this into GitHub
 ```
 
-### 2. Get the CoinHSL solver
+### 2. Get the CoinHSL solver [Optional but highly recommended]
 
 PredSim runs faster with HSL's linear solvers than with MUMPS. In an 80-iteration
 benchmark, MA57 made each iteration about 20% faster on epyc3 nodes and about 38%
