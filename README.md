@@ -64,11 +64,9 @@ and all future simulations then use it. Only the missing parts are built:
 cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
 ```
 
-If there's no archive and CoinHSL isn't already installed, the install stops
-straight away with a message saying what to do, before anything is compiled. So
-once you've installed with `--no-hsl`, keep passing that flag on every rerun until
-you have the archive. To go back to MUMPS after installing CoinHSL, rerun with
-`--no-hsl`, or use it for a single job (see [Choosing a solver](#choosing-a-solver)).
+To go back to MUMPS after installing CoinHSL, rerun the installer with
+`--no-hsl`, or you can force single simulations to use MUMPS when you 
+launch them (see [Choosing a solver](#choosing-a-solver)).
 
 ### 3. Install (one command)
 
