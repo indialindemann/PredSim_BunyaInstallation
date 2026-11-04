@@ -3,6 +3,8 @@
 What was measured to choose the installer's defaults, and why each choice
 was made. The main [README](README.md) has the short version. All results
 are from November 2026.
+How each bug behind these results was found and fixed is in
+[bug_fixes_&_tweaking.md](bug_fixes_%26_tweaking.md).
 
 ## Summary
 

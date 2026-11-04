@@ -8,6 +8,7 @@ directory, on **UQ's Bunya HPC** or a local Ubuntu workstation.
 - [Install on a local Ubuntu workstation](#install-on-a-local-ubuntu-workstation)
 - [How it works](#how-it-works)
 - [Benchmark findings](BENCHMARKS.md): what was measured, why single-threaded is as fast as multithreaded
+- [Bug fixes and tweaking](bug_fixes_%26_tweaking.md): how each bug and speed-up was found, and the exact fix
 
 ---
 
