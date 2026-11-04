@@ -534,6 +534,8 @@ and settings (PredSim `be2c8eb`). Two details came up:
 - **`epyc4` isn't an exact spec.** That feature covers 9124, 9534, 9454 and 9654P nodes, so the script pins the model too: `--constraint=epyc4&9454`.
 - **A bash quirk.** `${features//,/&}` printed `epyc4,9454`, because bash 5.2 treats `&` in a replacement as the matched text. A local test with a fake `scontrol`, fed real Bunya output, caught it before any job ran. It now uses `sed`.
 
+**How it was checked.** A real 1-iteration job ran through the default Slurm script and landed on an EPYC 9454 node, then its saved script was submitted as a new job. The rerun got the same CPU model, stack and solver, and reproduced the iterate at iteration 1 (objective `1.5291937`, violation `1.83e+04`). It also landed on the same node (bun126), although only the CPU model was required.
+
 ## Part 5: Benchmarking mistakes and pitfalls
 
 ### 5.1 The install check passed on a broken stack
@@ -671,5 +673,4 @@ scontrol show node <node> | grep ActiveFeatures
 - **Source vs prebuilt on epyc3 with HSL:** the selector's choice was measured with MUMPS only.
 - **Time to a solution by solver:** convergence runs are in progress, on `main.m`'s real problem.
 - **HSL scaling options:** not tested yet.
-- **Rerun scripts:** the real-job test on Bunya is in progress. Tested so far with a simulated `scontrol` using real Bunya output.
 - **Possible upstream reports:** suggesting `RTLD_DEEPBIND` to Ipopt, and MATLAB's unrenamed `METIS_SetDefaultOptions` to MathWorks. Not filed.
