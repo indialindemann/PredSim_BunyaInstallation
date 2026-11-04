@@ -35,7 +35,7 @@ export OPENBLAS_NUM_THREADS="\${OPENBLAS_NUM_THREADS:-1}"
 # run_predsim.sh passes to its build as CFLAGS. Must suit every node that runs it.
 export PREDSIM_EXTFUN_CFLAGS="\${PREDSIM_EXTFUN_CFLAGS-${SITE_EXTFUN_CFLAGS:-}}"
 EOF
-    if [[ -f "$PREFIX/hsl/lib/libhsl.so" ]]; then
+    if [[ -f "$PREFIX/hsl/lib/libhsl.so" && "${NO_HSL:-0}" != 1 ]]; then
         cat >> "$PREFIX/env.sh" <<EOF
 # CoinHSL (--hsl): PredSim's solve_NLPSOL uses Ipopt linear_solver=ma97 when
 # this file exists. PREDSIM_HSL_LIB= (set but empty) falls back to MUMPS.

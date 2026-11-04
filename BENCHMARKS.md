@@ -280,7 +280,7 @@ The Windows PredSim uses Ipopt's `linear_solver = ma97` (HSL) when
 always used MUMPS: the check looked only for the Windows path. Now:
 
 - **PredSim:** `solve_NLPSOL.m` takes the library from `$PREDSIM_HSL_LIB` on Linux, and the solver from `$PREDSIM_HSL_SOLVER` (default `ma97`).
-- **Installer:** `--hsl ARCHIVE` builds CoinHSL into each stack and sets `PREDSIM_HSL_LIB`.
+- **Installer:** CoinHSL is built into each stack from `~/coinhsl-*.tar.gz` or `--hsl ARCHIVE`, and sets `PREDSIM_HSL_LIB`. It's required unless you pass `--no-hsl`.
 - **CoinHSL is licensed:** download it yourself from <https://licences.stfc.ac.uk/product/coin-hsl>. It's free for academic use.
 - **MATLAB's own MA57 can't be used:** `libmwma57.so` is built with 64-bit integers, and Ipopt calls it with 32-bit ones (`MA57AD ... NE has value****`).
 

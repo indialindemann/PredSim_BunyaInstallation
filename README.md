@@ -32,7 +32,49 @@ ssh-keygen -t ed25519 -C "$USER@bunya"      # accept the defaults
 cat ~/.ssh/id_ed25519.pub                   # paste this into GitHub
 ```
 
-### 2. Install (one command)
+### 2. Get the CoinHSL solver
+
+PredSim runs faster with HSL's linear solvers than with MUMPS. In an 80-iteration
+benchmark, MA57 made each iteration about 20% faster on epyc3 nodes and about 38%
+faster on epyc4 nodes, at the same CPU cost ([details](BENCHMARKS.md#hsl-ma97-and-ma57)).
+Time to a full solution is still being measured. **The installer requires CoinHSL
+unless you opt out**, so get it before installing.
+
+CoinHSL is licensed, so each user downloads their own copy:
+
+1. Request a CoinHSL licence at <https://licences.stfc.ac.uk/product/coin-hsl>. It's free for academic use. Approval can take a few days.
+2. Once approved, open the downloads for that product and choose the **source tarball**, listed as `CoinHSL <version> (tarball)`, for example `coinhsl-2024.05.15.tar.gz`. Don't choose the `.zip`, or the Windows or Mac binaries.
+3. Copy it to your Bunya home directory, from the computer you downloaded it on:
+
+   ```bash
+   scp coinhsl-2024.05.15.tar.gz <your-username>@bunya.rcc.uq.edu.au:~/
+   ```
+
+The installer uses the newest `~/coinhsl-*.tar.gz` it finds. To use a file somewhere
+else, add `--hsl /path/to/file.tar.gz` to the install command. The licence covers
+your own use, so keep the file out of git repositories and shared folders.
+
+**To install without it,** for example while waiting for approval, add `--no-hsl`.
+PredSim then uses MUMPS:
+
+```bash
+sbatch bunya/install_predsim.slurm --no-hsl
+```
+
+**Installing it later:** running the installer without `--no-hsl` installs CoinHSL,
+and all future simulations then use it. Only the missing parts are built:
+
+```bash
+cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
+```
+
+If there's no archive and CoinHSL isn't already installed, the install stops
+straight away with a message saying what to do, before anything is compiled. So
+once you've installed with `--no-hsl`, keep passing that flag on every rerun until
+you have the archive. To go back to MUMPS after installing CoinHSL, rerun with
+`--no-hsl`, or use it for a single job (see [Choosing a solver](#choosing-a-solver)).
+
+### 3. Install (one command)
 
 On a Bunya login node:
 
@@ -41,16 +83,17 @@ git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git ~/PredSim_
 ```
 
 This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; a fresh
-install takes about 1.5 hours). Nothing heavy runs on the login node. The job:
+install takes about 2 hours). Nothing heavy runs on the login node. The job:
 
 1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`, twice: one stack with the official prebuilt CasADi and one built from source (see [Two CasADi stacks](#two-casadi-stacks-one-per-node-type)),
-2. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
-3. writes `~/.predsim/env.sh`, the one file a simulation needs; it picks the faster stack on whichever node a job lands on,
-4. runs a check on each stack that finishes with a short PredSim simulation.
+2. builds CoinHSL into each stack (unless you passed `--no-hsl`),
+3. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
+4. writes `~/.predsim/env.sh`, the one file a simulation needs; it picks the faster stack on whichever node a job lands on,
+5. runs a check on each stack that finishes with a short PredSim simulation.
 
 If your default Slurm account isn't the one to charge, add `--account=a_xxxx` after `sbatch`.
 
-### 3. Check it worked
+### 4. Check it worked
 
 ```bash
 squeue --me                                           # job still running?
@@ -66,7 +109,7 @@ Finished steps are skipped:
 cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
 ```
 
-### 4. Run a simulation
+### 5. Run a simulation
 
 Edit `~/PredSim/main.m` as usual, then:
 
@@ -93,7 +136,7 @@ sbatch --export=ALL,PREDSIM_SCRIPT=myOtherMain ~/PredSim_BunyaInstallation/bunya
 For a quick test, set `S.solver.max_iter` to a few tens in `main.m` first.
 At the default 5000 iterations a run takes hours.
 
-### 5. Updating
+### 6. Updating
 
 ```bash
 cd ~/PredSim_BunyaInstallation && git pull && sbatch bunya/install_predsim.slurm   # installer / dependencies
@@ -154,23 +197,10 @@ results** (BLAS errors, diverging solves; see [BENCHMARKS.md](BENCHMARKS.md#6-mu
 Rerunning the install rebuilds them. On the Ubuntu workstation source is
 about 10% faster on its own CPU, so it installs just that (see [CasADi](#casadi-prebuilt-vs-source)).
 
-### Optional: HSL MA57 and MA97 linear solvers
+### Choosing a solver
 
-The Windows PredSim uses HSL's MA97 instead of MUMPS when CoinHSL is
-installed. To do the same on Linux:
-
-1. Request CoinHSL (free for academic use) at
-   <https://licences.stfc.ac.uk/product/coin-hsl>. Download the **source**
-   archive `coinhsl-<version>.tar.gz` and copy it to Bunya.
-2. Add it to your install (about 45 minutes):
-
-   ```bash
-   cd ~/PredSim_BunyaInstallation
-   sbatch --export=ALL,PREDSIM_INSTALL_ARGS="--hsl $HOME/coinhsl-2024.05.15.tar.gz" bunya/install_predsim.slurm
-   ```
-
-PredSim then uses MA97 and prints `Using HSL linear solver: ma97`. To choose
-another solver for a job:
+With CoinHSL installed, PredSim uses MA97 and prints `Using HSL linear solver: ma97`.
+To choose another solver for a job:
 
 ```bash
 sbatch --export=ALL,PREDSIM_HSL_SOLVER=ma57 bunya/run_predsim.slurm       # MA57
@@ -206,10 +236,15 @@ change these.
 git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git
 cd PredSim_BunyaInstallation
 ./predsim-install.sh --site ubuntu-local --list     # what will run / is done
-./predsim-install.sh --site ubuntu-local            # install
+./predsim-install.sh --site ubuntu-local            # install (needs ~/coinhsl-*.tar.gz)
+./predsim-install.sh --site ubuntu-local --no-hsl   # or install without CoinHSL, using MUMPS
 ~/PredSim/linux/run_predsim.sh                      # run main.m
 nohup ~/PredSim/linux/run_predsim.sh > /dev/null 2>&1 &   # long run in the background; log in ~/PredSim/logs/
 ```
+
+CoinHSL is required here too, unless you pass `--no-hsl`: see
+[Get the CoinHSL solver](#2-get-the-coinhsl-solver). HSL's speed hasn't been
+benchmarked on a workstation.
 
 The local MATLAB R2024b's libstdc++ stops at GLIBCXX_3.4.30. gcc 12 matches
 it; Ubuntu's own gcc 13 would not.
@@ -240,6 +275,8 @@ current after a comment-only edit.
 |---|---|
 | `--site bunya\|ubuntu-local` | machine config in `sites/` (the Bunya job script always passes `bunya`) |
 | `--casadi prebuilt\|source\|both` | see below; `both` installs both stacks and a per-CPU selector (`SITE_STACK_BY_ARCH`; Bunya's default) |
+| `--hsl ARCHIVE` | build CoinHSL from this file (default: the newest `~/coinhsl-*.tar.gz`) |
+| `--no-hsl` | skip CoinHSL and use MUMPS. Without this flag the install fails if it needs CoinHSL and finds no archive |
 | `--only casadi,verify` / `--from opensim` | run part of the install |
 | `--list` | show steps and their state |
 | `--activate` | point `~/.predsim/env.sh` at this stack |
@@ -256,6 +293,7 @@ current after a comment-only edit.
 | `openblas` | Bunya: OpenBLAS 0.3.32 with `DYNAMIC_ARCH` (the gcc-12 module family only has 0.3.23, which breaks MUMPS) |
 | `ipopt` | source mode only: MUMPS (METIS ordering) + Ipopt, optimised for the CPU |
 | `casadi` | official prebuilt zip, or a build from `casadi-source-v<ver>.zip` |
+| `hsl` | CoinHSL from `coinhsl-*.tar.gz`, with METIS and OpenBLAS linked in (see [bug fixes](bug_fixes_%26_tweaking.md#27-matlab-taking-over-hsls-calls)) |
 | `swig` | upstream SWIG 4.1.1 for OpenSim's Java bindings |
 | `opensim` | opensim-core `4.5.2` + its pinned Simbody/spdlog/docopt, Java bindings, install RPATHs |
 | `geometry` | OpenSim Geometry from opensim-models (no Windows installer / 7-Zip) |

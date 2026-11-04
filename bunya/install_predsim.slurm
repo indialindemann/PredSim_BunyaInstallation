@@ -12,13 +12,17 @@
 # Install the PredSim Linux stack for the submitting user on UQ Bunya.
 #
 #   cd ~/PredSim_BunyaInstallation
-#   sbatch bunya/install_predsim.slurm                       # both CasADi stacks (default)
+#   sbatch bunya/install_predsim.slurm                       # both CasADi stacks + CoinHSL (default)
+#   sbatch bunya/install_predsim.slurm --no-hsl              # skip CoinHSL, use MUMPS
+#   sbatch bunya/install_predsim.slurm --hsl ~/some.tar.gz   # any predsim-install.sh option
 #   sbatch --export=ALL,CASADI_MODE=prebuilt bunya/install_predsim.slurm   # just one
 #   sbatch --account=a_xxxx bunya/install_predsim.slurm      # if your default account differs
 #
 # Everything goes to ~/predsim-deps/ (OpenSim + OpenBLAS shared in
 # ~/predsim-deps/bunya_opensim-<ver>, each CasADi mode in its own stack dir),
-# PredSim is cloned to ~/PredSim (branch linux/cleancurvev4) if absent.
+# PredSim is cloned to ~/PredSim (branch linux/cleancurvev4) if absent. CoinHSL
+# is built from the newest ~/coinhsl-*.tar.gz; the job fails straight away if
+# there is none, unless you pass --no-hsl (see README).
 # By default both CasADi stacks are installed (prebuilt and source) and
 # ~/.predsim/env.sh picks one on each node it runs on: source on epyc3,
 # prebuilt elsewhere, the faster on each type (BENCHMARKS.md section 5).
@@ -52,7 +56,7 @@ export SITE_JOBS="${SLURM_CPUS_PER_TASK:-4}"
 args=(--site bunya --activate)
 [[ -n "${CASADI_MODE:-}" ]] && args+=(--casadi "$CASADI_MODE")
 
-"$INSTALLER_DIR/predsim-install.sh" "${args[@]}" ${PREDSIM_INSTALL_ARGS:-}
+"$INSTALLER_DIR/predsim-install.sh" "${args[@]}" ${PREDSIM_INSTALL_ARGS:-} "$@"
 
 echo "== $(date -Is) done. Submit a simulation with:"
 echo "   sbatch $INSTALLER_DIR/bunya/run_predsim.slurm"
