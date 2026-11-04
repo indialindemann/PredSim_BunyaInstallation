@@ -51,8 +51,7 @@ CoinHSL is licensed, so each user downloads their own copy:
    ```
 
 The installer uses the newest `~/coinhsl-*.tar.gz` it finds. To use a file somewhere
-else, add `--hsl /path/to/file.tar.gz` to the install command. The licence covers
-your own use, so keep the file out of git repositories and shared folders.
+else, add `--hsl /path/to/file.tar.gz` to the install command.
 
 **To install without it,** for example while waiting for approval, add `--no-hsl`
 to the end of the command in step 3. PredSim then uses MUMPS.
