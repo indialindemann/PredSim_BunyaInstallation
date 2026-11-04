@@ -413,7 +413,7 @@ results and break Ipopt's NaN checks.
 | | tuned | 5000 (cap) | 3.33, 3.18 | 2.40, 2.29 | 1.15, 1.08 | **1.08, 1.05 s** | 7.4 | 0.0042 |
 
 - **Prebuilt vs source, compared with section 5:** that result came from MUMPS, which isn't the linear solver here. With MA57, `nlp_jac_g` takes the same time on both. Their paths differ, so their totals can't be compared, and whether the source stack still earns its place with HSL is unsettled.
-- **Tuning is a small gain.** `nlp_jac_g` is about 3–6% faster per call. The one clean comparison is epyc3, where source and tuned took the same path: 4.00 against 4.12 hours, about 3%. There, faster evaluations were partly offset by solver time that was no faster.
+- **Tuning is a small gain.** `nlp_jac_g` is about 5–7% faster per call. The one clean comparison is epyc3, where source and tuned took the same path: 4.00 against 4.12 hours, about 3%. There, faster evaluations were partly offset by solver time that was no faster.
 - **epyc4's total times differ more,** but those stacks took different paths, so that isn't a speed ranking. Tuned builds aren't offered by default.
 - **Runs reproduce exactly.** Repeats gave identical iteration counts and final values, and so did the earlier batch for epyc3 source and epyc4 prebuilt.
 
