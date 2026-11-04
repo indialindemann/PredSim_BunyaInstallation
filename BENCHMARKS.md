@@ -13,7 +13,8 @@ How each bug behind these results was found and fixed is in
 | Biggest single speed-up? | Compiling the model's external function with optimisation: **1.8× faster** (8.4 → 4.7 s per iteration). Now the default. |
 | CPU-specific flags for it? | `-march=znver3` (FMA, AVX2) makes each call 28% faster on epyc3 and epyc4, about 12% per iteration. Now the Bunya default. `-march=znver4` (AVX-512) is no better. See [section 1b](#1b-cpu-flags-for-the-external-function--marchznver3). |
 | Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL](#hsl-ma97-and-ma57)). |
-| HSL instead of MUMPS? | Faster per iteration: MA57 at 1 thread cuts an iteration by about 20% on epyc3 and 38% on epyc4 at no extra CPU. MA97 is fastest on epyc4 with threads, at much higher CPU cost. Time to a solution isn't measured yet. See [HSL](#hsl-ma97-and-ma57). |
+| HSL instead of MUMPS? | Unsettled. Over 80 iterations MA57 was 20–38% faster per iteration, but that didn't hold on longer runs, where MA97 on 4 threads did best. No long run reached a solution, so time to a solution isn't measured. See [HSL](#hsl-ma97-and-ma57) and [long runs](#long-runs-no-solution-found). |
+| CPU-tuned CasADi? | Small gain: about 3% overall in the one clean comparison. See [long runs](#long-runs-no-solution-found). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
 | Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). |
@@ -333,7 +334,8 @@ widely at iteration 80:
 
 MA97 has the lowest constraint violation at this point, but none of these runs
 has converged, and that gap may not last. Time to a solution needs runs to
-convergence, which haven't been done. Whether the source stack is still the
+convergence: the [long runs](#long-runs-no-solution-found) tried this, and none
+found a solution. Whether the source stack is still the
 faster one on epyc3 with HSL hasn't been measured either.
 
 ### Making HSL work inside MATLAB
@@ -356,6 +358,64 @@ prefer its own dependencies. Upstream Ipopt 3.14 uses plain `RTLD_NOW`.
 links METIS and OpenBLAS statically with `-Bsymbolic`. Traces with
 `LD_DEBUG=bindings` on both stacks show no calls from `libhsl` into MATLAB's
 libraries or MKL, and OpenMP calls going to `libgomp`.
+
+## Long runs: no solution found
+
+These runs were meant to measure time to a solution. **None found one**, so they
+can't rank solvers or stacks by that measure.
+
+**Method:** `main.m`'s real problem (`Falisse_et_al_2022_lightfoot_alpha0dot5`,
+straight running at 9.2, from `OCP/motion_saved.mot`) at PredSim `6b532ce` or
+later, which includes the touchdown bound fix `3ae6a7c`. First pass of the speed
+loop only, 5000-iteration cap, `znver3` external function, 32 GB, default tolerances.
+No run had BLAS errors.
+
+**What happened in all 18 runs:** the constraint violation stalled at about
+2,600–2,800 by iteration 350–490. Ipopt then entered restoration, and each run
+ended at `Converged to a point of local infeasibility` or at the cap, still in
+restoration. The final violation was 0.002–0.8, against a target of 10⁻⁶.
+
+This happens with every solver and stack, which points to the problem setup rather
+than the install. The cause hasn't been established. Suspects are the new touchdown
+bounds, `main.m`'s relaxed tolerances being commented out, and the starting guess.
+
+### By solver
+
+One run each. Stack by node: epyc3 source, epyc4 prebuilt.
+
+| Node | Solver | CPUs | Iterations | Hours | s / iter | Solver s / iter | Objective | Violation |
+|---|---|---|---|---|---|---|---|---|
+| epyc3 | MUMPS | 2 | 5000 (cap) | 7.04 | 5.07 | 3.09 | 121.6 | 0.0089 |
+| | MA57 | 2 | 3104 (stopped) | 4.21 | 4.89 | 2.87 | 22.5 | 0.0037 |
+| | MA97, 4 threads | 4 | 5000 (cap) | 4.30 | 3.10 | 1.14 | 107.4 | 0.0055 |
+| epyc4 | MUMPS | 2 | 1886 (stopped) | 2.01 | 3.83 | 2.42 | 83.1 | 0.014 |
+| | MA57 | 2 | 5000 (cap) | 5.51 | 3.96 | 2.54 | 123.2 | 0.023 |
+| | MA97, 4 threads | 4 | 5000 (cap) | 2.88 | 2.07 | 0.76 | 4.0 | 0.0020 |
+
+- **MA57's 80-iteration advantage didn't last.** Its solver time was 0.9–1.3 s per iteration over 80 iterations, but 2.5–2.9 s here, about the same as MUMPS.
+- **MA97 on 4 threads had the lowest solver time** on both nodes. On epyc4 it took about half MA57's time for about the same CPU cost (8.3 against 7.9 CPU·s per iteration).
+- **Caveat:** these are averages over different paths with different shares of restoration (12–76%), so they aren't a like-for-like ranking.
+
+### By CasADi build
+
+MA57 on 1 thread, 2 CPUs, 2 repeats, all jobs submitted together. Tuned means
+CasADi, Ipopt, MUMPS and HSL built with `-O3 -march=<cpu> -mtune=<cpu> -funroll-loops`
+(`znver3` on epyc3, `znver4` on epyc4). `-ffast-math` wasn't tested: it can change
+results and break Ipopt's NaN checks.
+
+| Node | Build | Iterations | Hours | s / iter | Solver s / iter | `nlp_jac_g` per call | Objective | Violation |
+|---|---|---|---|---|---|---|---|---|
+| epyc3 | prebuilt | 5000 (cap) | 4.95, 5.06 | 3.57, 3.64 | 1.75, 1.76 | 1.48, 1.54 s | 121.2 | 0.83 |
+| | source | 3104 (stopped) | 4.09, 4.15 | 4.74, 4.81 | 2.76, 2.80 | 1.52, 1.55 s | 22.5 | 0.0037 |
+| | tuned | 3104 (stopped) | **3.99, 4.01** | 4.63, 4.65 | 2.87, 2.89 | **1.43, 1.43 s** | 22.5 | 0.0037 |
+| epyc4 | prebuilt | 5000 (cap) | 5.56, 5.57 | 4.00, 4.01 | 2.55, 2.56 | 1.12, 1.12 s | 123.2 | 0.023 |
+| | source | 4634 (stopped) | 3.96, 4.06 | 3.07, 3.15 | 1.65, 1.72 | 1.11, 1.11 s | 131.3 | 0.0030 |
+| | tuned | 5000 (cap) | 3.33, 3.18 | 2.40, 2.29 | 1.15, 1.08 | **1.08, 1.05 s** | 7.4 | 0.0042 |
+
+- **Prebuilt vs source, compared with section 5:** that result came from MUMPS, which isn't the linear solver here. With MA57, `nlp_jac_g` takes the same time on both. Their paths differ, so their totals can't be compared, and whether the source stack still earns its place with HSL is unsettled.
+- **Tuning is a small gain.** `nlp_jac_g` is about 3–6% faster per call. The one clean comparison is epyc3, where source and tuned took the same path: 4.00 against 4.12 hours, about 3%. There, faster evaluations were partly offset by solver time that was no faster.
+- **epyc4's total times differ more,** but those stacks took different paths, so that isn't a speed ranking. Tuned builds aren't offered by default.
+- **Runs reproduce exactly.** Repeats gave identical iteration counts and final values, and so did the earlier batch for epyc3 source and epyc4 prebuilt.
 
 ## Reproducing
 

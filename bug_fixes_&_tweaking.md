@@ -575,7 +575,10 @@ iterations, MA97's constraint violation on epyc4 was about 75, against about 5,7
 for MA57.
 
 **What this means.** Time per iteration can't say which solver reaches a solution
-first. That's what the convergence runs are for.
+first. The convergence runs were meant to settle that, but none found a solution
+([long runs](BENCHMARKS.md#long-runs-no-solution-found)). They did show that an
+80-iteration result can mislead: MA57's solver time rose from about 1 s to 2.5–2.9 s
+per iteration over a full run.
 
 ### 5.4 My setup mistakes in the `-march` benchmark
 
@@ -669,8 +672,8 @@ scontrol show node <node> | grep ActiveFeatures
 
 - **The pthreads OpenBLAS trigger** ([2.5](#25-mkl-error-parameter-11--on-entry-to-dtrsm)) was avoided, not explained.
 - **`znver4`'s slower iterations:** Ipopt's own time was higher (2.68 against 2.29 s) on the same trajectory. Not investigated.
-- **CPU-tuned stacks:** the earlier result is void and hasn't been re-measured.
+- **CPU-tuned stacks:** re-measured on long runs. The gain is small (about 3% in the one clean comparison), but no tuned run reached a solution.
 - **Source vs prebuilt on epyc3 with HSL:** the selector's choice was measured with MUMPS only.
-- **Time to a solution by solver:** convergence runs are in progress, on `main.m`'s real problem.
+- **Time to a solution:** all 18 long runs on `main.m`'s real problem failed to find a solution, whichever solver or stack they used. The cause isn't established, and rankings by time to a solution need a setup that solves. See [long runs](BENCHMARKS.md#long-runs-no-solution-found).
 - **HSL scaling options:** not tested yet.
 - **Possible upstream reports:** suggesting `RTLD_DEEPBIND` to Ipopt, and MATLAB's unrenamed `METIS_SetDefaultOptions` to MathWorks. Not filed.
