@@ -54,12 +54,8 @@ The installer uses the newest `~/coinhsl-*.tar.gz` it finds. To use a file somew
 else, add `--hsl /path/to/file.tar.gz` to the install command. The licence covers
 your own use, so keep the file out of git repositories and shared folders.
 
-**To install without it,** for example while waiting for approval, add `--no-hsl`.
-PredSim then uses MUMPS:
-
-```bash
-sbatch bunya/install_predsim.slurm --no-hsl
-```
+**To install without it,** for example while waiting for approval, add `--no-hsl`
+to the end of the command in step 3. PredSim then uses MUMPS.
 
 **Installing it later:** running the installer without `--no-hsl` installs CoinHSL,
 and all future simulations then use it. Only the missing parts are built:
