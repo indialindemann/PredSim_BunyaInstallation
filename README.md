@@ -161,7 +161,7 @@ adds this list to every solve:
 ma97_u=1e-2;ma97_umax=1e-1;ma97_scaling=mc64;nlp_scaling_method=none;obj_scaling_factor=1e-3;mu_max=1;dual_inf_tol=1e-3
 ```
 
-- **What it changes:** stricter pivoting and MC64 scaling in MA97, a fixed objective scaling factor instead of Ipopt's automatic scaling, a cap on the barrier parameter, and a stricter test before "Optimal".
+- **What it changes:** stricter, more accurate pivoting in MA97 (a larger `ma97_u` rejects small pivots; Ipopt's default 1e-8 accepts almost any) with MC64 scaling, a fixed objective scaling factor instead of Ipopt's automatic scaling, a cap on the barrier parameter, and a stricter test before "Optimal".
 - **`main.m` wins:** anything set in `S.solver.ipopt_options` is kept.
 - **To turn it off:** `--export=ALL,PREDSIM_IPOPT_OPTIONS=none` gives Ipopt's defaults. The same variable takes your own `name=value;name=value` list.
 - **Memory:** runs with this list peaked under 10 GB, so the 16 GB default still fits.

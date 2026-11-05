@@ -687,6 +687,16 @@ Tighter pivoting alone is not enough and not safe: it needed up to 48 GB and cra
 thread count ([5.7](#57-the-same-job-gives-different-results-by-cpu-type)), and from there reached
 different results or none. Nothing reported an error.
 
+**What the threshold means.** Raising it makes the factorisation more accurate, not less. When MA97
+eliminates a row it needs a pivot to divide by, and dividing by a relatively tiny number magnifies
+rounding error. The threshold `u` is the test for "too tiny": a pivot is accepted only if it is at
+least `u` times the largest entry in its column. At 1e-8 almost any pivot passes, so the solver
+keeps its planned order and runs fast, but it may divide by numbers a hundred million times
+smaller than their neighbours. At 1e-2 such pivots are rejected and postponed until a better one is
+available, which costs time and memory. So the trade is speed against accuracy, and Ipopt calls the
+option a "tolerance" even though a larger value is the stricter setting. This applies to every
+factorisation in a run, not only the first; the first is just where it was traced.
+
 **Cause.** At iteration 0 Ipopt factorises a symmetric indefinite matrix with 402,110 rows. With
 MA97's pivot threshold at Ipopt's default (`ma97_u` = 1e-8), that factorisation is too inaccurate to
 use, and what Ipopt does next depends on how the rounding fell. From Ipopt's detailed log

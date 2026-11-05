@@ -6,6 +6,42 @@ are from November 2026.
 How each bug behind these results was found and fixed is in
 [bug_fixes_&_tweaking.md](bug_fixes_%26_tweaking.md).
 
+## Contents
+
+- [Summary](#summary)
+- [Reproducible results](#reproducible-results)
+  - [On Windows](#on-windows)
+- [Method](#method)
+- [Where the time goes](#where-the-time-goes)
+- [1. External function optimisation (`-O0` → `-O3`)](#1-external-function-optimisation--o0---o3)
+- [1b. CPU flags for the external function (`-march=znver3`)](#1b-cpu-flags-for-the-external-function--marchznver3)
+- [2. Why single-threaded is as fast as multithreaded](#2-why-single-threaded-is-as-fast-as-multithreaded)
+- [3. CPUs per job](#3-cpus-per-job)
+- [4. CPU types on Bunya](#4-cpu-types-on-bunya)
+- [5. Prebuilt vs source CasADi](#5-prebuilt-vs-source-casadi)
+- [6. Multithreaded MUMPS](#6-multithreaded-mumps)
+  - [Threaded BLAS: slower](#threaded-blas-slower)
+  - [OpenMP MUMPS: a Bunya build bug, then a real speed-up](#openmp-mumps-a-bunya-build-bug-then-a-real-speed-up)
+- [HSL MA97 and MA57](#hsl-ma97-and-ma57)
+  - [Making HSL work inside MATLAB](#making-hsl-work-inside-matlab)
+- [Long runs: no solution found](#long-runs-no-solution-found)
+  - [By solver](#by-solver)
+  - [By CasADi build](#by-casadi-build)
+- [What changes the result](#what-changes-the-result)
+  - [What "tighter pivoting" means](#what-tighter-pivoting-means)
+  - [Results on the `239530b` problem](#results-on-the-239530b-problem)
+  - [Prebuilt vs source: optimality](#prebuilt-vs-source-optimality)
+  - [OpenBLAS paths and pivoting, first 100 iterations](#openblas-paths-and-pivoting-first-100-iterations)
+  - [Tighter pivoting, full-length runs](#tighter-pivoting-full-length-runs)
+- [Ipopt settings](#ipopt-settings)
+  - [What goes wrong with Ipopt's defaults](#what-goes-wrong-with-ipopts-defaults)
+  - [Results by setting](#results-by-setting)
+  - [Validation through the job script](#validation-through-the-job-script)
+  - [Other speeds](#other-speeds)
+  - [The solutions are different gaits](#the-solutions-are-different-gaits)
+  - [Limits](#limits)
+- [Reproducing](#reproducing)
+
 ## Summary
 
 | Question | Answer |
@@ -17,7 +53,7 @@ How each bug behind these results was found and fixed is in
 | CPU-tuned CasADi? | Small gain: about 3% overall in the one clean comparison. See [long runs](#long-runs-no-solution-found). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
-| Prebuilt or source CasADi? | Bunya: both are installed, and jobs use source on every node type so results don't follow the node. That isn't the fastest choice everywhere: with MUMPS, prebuilt was 7% faster on epyc4 and source 16% faster on epyc3 (`PREDSIM_CASADI_MODE=fastest` picks per node). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). **Prebuilt did worse on optimality at MA97's default pivoting:** none of its runs reached a solution, while most source runs on the same problem did. With tighter pivoting, both stacks reached one on both paths. See [prebuilt vs source](#prebuilt-vs-source-optimality). |
+| Prebuilt or source CasADi? | Bunya: both are installed, and jobs use source on every node type so results don't follow the node. That isn't the fastest choice everywhere: with MUMPS, prebuilt was 7% faster on epyc4 and source 16% faster on epyc3 (`PREDSIM_CASADI_MODE=fastest` picks per node). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). **Prebuilt did worse on optimality at MA97's default pivoting:** none of its runs reached a solution, while most source runs on the same problem did. With tighter (stricter, more accurate) pivoting, both stacks reached one on both paths. See [prebuilt vs source](#prebuilt-vs-source-optimality). |
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
 | Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first factorisation is inaccurate, so rounding decides the first step. Every path tested differs, not only AVX-512, and no path is faulty. See [what changes the result](#what-changes-the-result) and [Ipopt settings](#ipopt-settings). |
@@ -501,6 +537,19 @@ results and break Ipopt's NaN checks.
 
 ## What changes the result
 
+### What "tighter pivoting" means
+
+Several sections below change MA97's pivot setting, `ma97_u`. **A larger value is stricter and
+makes the factorisation more accurate, not less.** MA97 accepts a pivot only if it is at least
+`ma97_u` times the largest entry in its column, and dividing by a relatively tiny pivot magnifies
+rounding error. Ipopt's default is 1e-8, which accepts almost anything: fast, but inaccurate on
+these matrices. "Tighter pivoting" here means `ma97_u` 1e-2 (HSL's own default) with `ma97_umax`
+1e-1, which rejects small pivots at the cost of more work and memory. Ipopt calls the option a
+"tolerance", which makes the direction easy to misread. More in
+[bug fixes 5.8](bug_fixes_%26_tweaking.md#58-the-first-factorisation-is-inaccurate-at-ipopts-default-pivot-threshold).
+
+### Results on the `239530b` problem
+
 A different problem from the long runs above: `main.m` and `OCP_formulation.m` from
 PredSim `239530b` (half gait cycle, no touchdown bounds), with the same subject, speed,
 starting guess and 5000-iteration cap. Muscle fit and `F_*.so` were byte-identical across the
@@ -531,9 +580,12 @@ Paths were logged only for the Haswell runs and epyc3 prebuilt; the others are i
 
 ### Prebuilt vs source: optimality
 
+Here "default pivoting" is Ipopt's loose, less accurate MA97 setting (`ma97_u` 1e-8) and "tighter
+pivoting" is the stricter, more accurate one (1e-2): see [what it means](#what-tighter-pivoting-means).
+
 **At default pivoting thresholds, prebuilt CasADi did worse than source on optimality.** On this
 problem, 0 of 5 prebuilt runs reached Optimal, against 6 of 8 source runs. Each count includes one run
-that repeated another line for line. **With tighter pivoting, that gap closed:** both prebuilt runs
+that repeated another line for line. **With tighter (more accurate) pivoting, that gap closed:** both prebuilt runs
 reached Optimal. Run pairs with the same solver, node and OpenBLAS path:
 
 | Solver, path | Source | Prebuilt |
@@ -571,13 +623,14 @@ reproduced their long runs line for line. Iteration 1:
 | epyc4, MUMPS, for comparison | 2.6204e6 | -0.3 | none | 23 | |
 
 - **It isn't specific to AVX-512.** Prescott, Sandybridge and Haswell differ from each other as much as from the AVX-512 paths. SkylakeX, Cooperlake and epyc4's and epyc5's defaults match for all 100 iterations.
-- **Tighter pivoting removes most of the early sensitivity.** With `ma97_u` at 1e-4 or 1e-2 (default 1e-8), Cooperlake and Haswell match at iteration 1, and match epyc4 MUMPS's printed line. They first differ at iteration 45 and 59, instead of 1. At 1e-2 they were still about 1 part in a million apart at iteration 100.
+- **Tighter pivoting removes most of the early sensitivity.** A larger `ma97_u` is stricter and more accurate ([what it means](#what-tighter-pivoting-means)). With `ma97_u` at 1e-4 or 1e-2 (default 1e-8), Cooperlake and Haswell match at iteration 1, and match epyc4 MUMPS's printed line. They first differ at iteration 45 and 59, instead of 1. At 1e-2 they were still about 1 part in a million apart at iteration 100.
 - **No sign of an AVX-512 bug.** Kernel accuracy was measured later and every path is accurate ([Ipopt settings](#ipopt-settings)).
 - **Cost over 100 iterations:** Ipopt time was within about 17% of the default, though these are single runs on different paths.
 
 ### Tighter pivoting, full-length runs
 
-MA97, 4 threads, EPYC 9454 nodes, 5000-iteration cap. Tighter means `ma97_u` 1e-2 and `ma97_umax` 1e-1;
+MA97, 4 threads, EPYC 9454 nodes, 5000-iteration cap. Tighter means `ma97_u` 1e-2 and `ma97_umax` 1e-1,
+which is the stricter and more accurate setting ([what it means](#what-tighter-pivoting-means));
 default is 1e-8 and 1e-4. Each row is one run. Restoration counts iterations marked `r` in the log.
 
 | Stack | Path | Pivoting | Exit | Iterations | Restoration | Objective | Ipopt s |
@@ -630,7 +683,7 @@ Many runs shared each node, so times are about twice those of a quiet node.
 ### What goes wrong with Ipopt's defaults
 
 **1. The first factorisation is inaccurate.** MA97's default pivot threshold (`ma97_u`)
-is 10⁻⁸. The first matrix has 402,110 rows, 52,000 to 59,000 delayed pivots, and Jacobian
+is 10⁻⁸, which is loose: a larger value is stricter and more accurate. The first matrix has 402,110 rows, 52,000 to 59,000 delayed pivots, and Jacobian
 entries from 10⁻¹⁶ to 2 million. Ipopt's detailed log (`print_level 7`) at iteration 0:
 
 | Setting, code path | What MA97 returned | Barrier parameter chosen |
@@ -681,7 +734,8 @@ removed the restoration phase completely on that problem.
 
 ### Results by setting
 
-"Tighter" means `ma97_u=1e-2;ma97_umax=1e-1`. Every row also has `dual_inf_tol=1e-3`.
+"Tighter" means `ma97_u=1e-2;ma97_umax=1e-1`, the stricter and more accurate pivot setting
+([what it means](#what-tighter-pivoting-means)). Every row also has `dual_inf_tol=1e-3`.
 "Scaling off" means `nlp_scaling_method=none`; "objective factor" is `obj_scaling_factor`
 on top of that. Counts are runs that reached Optimal out of runs made; a run that didn't
 either failed or hit its wall limit. Iterations and objectives are for the Optimal runs.
@@ -724,6 +778,9 @@ either failed or hit its wall limit. Iterations and objectives are for the Optim
   half-cycle runs
   stalled. Factor 1e-4 matched 1e-3 on the half-cycle problem and took 614 to 1,032
   iterations on the full-cycle one, some of them with restoration.
+- **Other linear solvers with the default list:** MA57 reached Optimal on both problems (571
+  iterations at 5.328, 889 at 5.787). MUMPS was much slower per iteration and had not
+  converged at its 100-minute limit (objective 10 to 30 after 530 to 600 iterations).
 - **With Ipopt's scaling left on, `mu_max=1` is fast on the full-cycle problem**
   (448 to 622 iterations) but stuck in restoration on all six half-cycle runs.
 
@@ -743,11 +800,11 @@ first speed of `main.m`'s loop (9.2 m/s) counts.
 
 | Settings | Node | Exit | Iterations | Objective | Minutes | Peak GB |
 |---|---|---|---|---|---|---|
-| Default list (`d2147e4`) | epyc4 | Still running: objective 5.84 at iteration 409 | | | |  |
-| | epyc3 | Still running: objective 14.69 at iteration 241 | | | |  |
-| | epyc4 (no node flags) | Still running: objective 5.84 at iteration 408 | | | |  |
-| | epyc5 | Still running: objective 13.32 at iteration 250 | | | |  |
-| | epyc4, prebuilt stack | Still running: objective 5.89 at iteration 406 | | | |  |
+| Default list (`d2147e4`) | epyc4 | Still running: objective 5.80 at iteration 652 | | | |  |
+| | epyc3 | Still running: objective 5.85 at iteration 410 | | | |  |
+| | epyc4 (no node flags) | Still running: objective 5.80 at iteration 652 | | | |  |
+| | epyc5 | Still running: objective 5.82 at iteration 424 | | | |  |
+| | epyc4, prebuilt stack | Still running: objective 5.78 at iteration 657 | | | |  |
 | The same list passed as `PREDSIM_IPOPT_OPTIONS` on `04839db` | epyc4 | Optimal | 926 | 5.794 | 55 | 9.6 |
 | | epyc3 | Optimal | 926 | 5.794 | 76 | 9.7 |
 | First default (`04839db`) | epyc4, `OPENBLAS_CORETYPE=auto` | Optimal | 1161 | 5.832 | 71 | 9.5 |
@@ -816,7 +873,11 @@ optimum, so check the gait, not only the exit message.
 - **The objective factor is fixed, not derived.** 1e-3 suits objectives of order 1 to
   10 at the solution. Three values were tried, on one subject.
 - **The default was chosen late.** It has fewer runs behind it than the settings it
-  replaced, and its other-speed runs were still going when this was written.
+  replaced.
+- **Other speeds are slow.** At 1.33 m/s, and at 5 m/s on the full-cycle problem, runs
+  with the default list had not finished at their 100-minute limit (1,050 to 1,240
+  iterations, objectives already at 0.18 to 0.22 and 0.51, the two 5 m/s runs with 127
+  and 258 restoration iterations). The list was tuned on 9.2 m/s.
 - **Windows wasn't tested.** The same options can be set in `main.m` (PredSim
   `linux/README.md`).
 - **Result files:** `/scratch/user/<user>/predsim-night/` on Bunya holds every run
