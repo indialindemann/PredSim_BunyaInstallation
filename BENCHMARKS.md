@@ -754,7 +754,7 @@ either failed or hit its wall limit. Iterations and objectives are for the Optim
 | Tighter + MC64 + scaling off + `mu_max=1` (first default, `04839db`) | 8 of 8 | 809 to 908; 5.33 | 6 of 8 | 1058 to 1940; 5.83 to 5.84 | 10 |
 | The same without MC64 | 8 of 8 | 791 to 1506; 5.33 | 8 of 8 | 1075 to 1606; 5.83 to 5.84 | 25 |
 | The same + objective factor 1e-5 | 3 of 4 | 589 to 909; 5.35 | 4 of 4 | 533 to 634; 5.80 to 5.81 | 10 |
-| The same + objective factor 1e-4 | 7 of 7 | 530 to 611; 5.33 | 6 of 7 | 614 to 1032; 5.76 to 5.79 | 10 |
+| The same + objective factor 1e-4 | 7 of 7 | 530 to 611; 5.33 | 7 of 7 | 614 to 1221; 5.76 to 5.79 | 10 |
 | **The same + objective factor 1e-3 (default, `d2147e4`)** | 7 of 7 | 529 to 679; 5.33 | 6 of 7 | 637 to 926; 5.78 to 5.81 | 10 |
 
 - **Ipopt's defaults never converged,** with any linear solver, on either problem.
@@ -800,24 +800,39 @@ first speed of `main.m`'s loop (9.2 m/s) counts.
 
 | Settings | Node | Exit | Iterations | Objective | Minutes | Peak GB |
 |---|---|---|---|---|---|---|
-| Default list (`d2147e4`) | epyc4 | Still running: objective 5.80 at iteration 652 | | | |  |
-| | epyc3 | Still running: objective 5.85 at iteration 410 | | | |  |
-| | epyc4 (no node flags) | Still running: objective 5.80 at iteration 652 | | | |  |
-| | epyc5 | Still running: objective 5.82 at iteration 424 | | | |  |
-| | epyc4, prebuilt stack | Still running: objective 5.78 at iteration 657 | | | |  |
+| Default list (`d2147e4`) | epyc4 | Optimal | 926 | 5.794 | 55 | 9.7 |
+| | epyc3 | Still running: objective 5.79 at iteration 677 | | | |  |
+| | epyc4 (no node flags) | Optimal | 926 | 5.794 | 55 | 9.7 |
+| | epyc5 | Still running: objective 5.79 at iteration 703 | | | |  |
+| | epyc4, prebuilt stack | Still running: objective 5.78 at iteration 1041 | | | |  |
+| | epyc4, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Still running: objective 18.49 at iteration 234 | | | |  |
+| | epyc5, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Still running: objective 318.37 at iteration 150 | | | |  |
 | The same list passed as `PREDSIM_IPOPT_OPTIONS` on `04839db` | epyc4 | Optimal | 926 | 5.794 | 55 | 9.6 |
 | | epyc3 | Optimal | 926 | 5.794 | 76 | 9.7 |
 | First default (`04839db`) | epyc4, `OPENBLAS_CORETYPE=auto` | Optimal | 1161 | 5.832 | 71 | 9.5 |
 | | epyc3, prebuilt stack | Optimal | 1318 | 5.840 | 99 | 9.6 |
 | | epyc3, 4 CPUs and 4 threads | Optimal | 1845 | 5.840 | 121 | 9.7 |
 | | epyc4, 4 CPUs and 4 threads | Optimal | 1845 | 5.840 | 123 | 9.9 |
-| | epyc3, epyc4 (two runs), epyc5 | Still running at 5.82 after 1,840 to 2,960 iterations | | | | |
-| Ipopt defaults (`PREDSIM_IPOPT_OPTIONS=none`) | epyc3 | Still running: objective 124, violation 0.7, 910 restoration iterations after 2,929 | | | | |
+| | epyc3, epyc4 (two runs), epyc5 | Stopped by hand at 5.82 after 1,840 to 2,960 iterations, still polishing | | | | |
+| Ipopt defaults (`PREDSIM_IPOPT_OPTIONS=none`) | epyc3 | Stopped by hand: objective 124, violation 0.7, 910 restoration iterations after 2,929 | | | | |
+
+**Without the Haswell pin.** The first failures were epyc4 runs on their own Cooperlake path, so
+the default list was also run there with `OPENBLAS_CORETYPE=auto`, 1 thread, through the
+benchmark copies:
+
+| Problem | Node, stack | Exit | Iterations | Objective | Minutes |
+|---|---|---|---|---|---|
+| Half cycle | epyc4, source | Still running: objective 9.47 at iteration 246 |
+| | epyc4, prebuilt | Still running: objective 6.40 at iteration 254 |
+| | epyc5, source | Still running: objective 83.05 at iteration 152 |
+| Full cycle | epyc4, prebuilt | Still running: objective 19.66 at iteration 239 |
+| | epyc4, source, 4 threads | Still running: objective 10.39 at iteration 282 |
 
 - **The node type no longer matters.** epyc3 and epyc4 printed the same iteration count and
   objective with the default list, and the benchmark run with the same settings matched them.
 - **The first default converged but slowly:** four runs took 71 to 123 minutes and four were
   still polishing after more than 1,800 iterations.
+- Rows marked "still running" had not finished when this was last updated.
 - **Ipopt's defaults fail through the same path,** so the difference is the settings.
 
 ### Other speeds
@@ -827,10 +842,10 @@ that reached Optimal, their iteration counts and their objectives.
 
 | Problem, speed | Ipopt defaults | First default (`04839db`) | Default (`d2147e4`) |
 |---|---|---|---|
-| Half cycle, 1.33 m/s | 2 of 2; 382, 1099; 0.292, 0.382 | 2 of 2; 2203, 2324; 0.174 | 0 of 2 (2 running) |
+| Half cycle, 1.33 m/s | 2 of 2; 382, 1099; 0.292, 0.382 | 2 of 2; 2203, 2324; 0.174 | 1 of 2; 1070; 0.224 |
 | Half cycle, 5 m/s | 2 of 2; 1373, 1870; 0.541, 2.177 | 2 of 2; 1133, 1308; 0.500, 0.501 | 2 of 2; 736, 986; 0.501 |
-| Full cycle, 1.33 m/s | 2 of 2; 335, 531; 0.264 | 2 of 2; 1363, 1772; 0.179, 0.224 | 0 of 2 (2 running) |
-| Full cycle, 5 m/s | 2 of 2; 73, 1001; 0.542, 57.734 | 1 of 2; 1893; 0.510 | 0 of 2 (2 running) |
+| Full cycle, 1.33 m/s | 2 of 2; 335, 531; 0.264 | 2 of 2; 1363, 1772; 0.179, 0.224 | 0 of 2 (2 not converged) |
+| Full cycle, 5 m/s | 2 of 2; 73, 1001; 0.542, 57.734 | 1 of 2; 1893; 0.510 | 0 of 2 (2 not converged) |
 
 - **Ipopt's defaults stop early here too.** Their "Optimal" exits had an unscaled
   optimality error of 0.0002 to 0.35. One 5 m/s run stopped at iteration 73 with an
@@ -874,10 +889,12 @@ optimum, so check the gait, not only the exit message.
   10 at the solution. Three values were tried, on one subject.
 - **The default was chosen late.** It has fewer runs behind it than the settings it
   replaced.
-- **Other speeds are slow.** At 1.33 m/s, and at 5 m/s on the full-cycle problem, runs
-  with the default list had not finished at their 100-minute limit (1,050 to 1,240
-  iterations, objectives already at 0.18 to 0.22 and 0.51, the two 5 m/s runs with 127
-  and 258 restoration iterations). The list was tuned on 9.2 m/s.
+- **Other speeds are slow.** With the default list, the half-cycle problem at 5 m/s
+  converged in 736 and 986 iterations and one 1.33 m/s run in 1,070. The other five runs
+  at 1.33 m/s, and at 5 m/s on the full-cycle problem, hit their 100-minute limit after
+  1,170 to 1,320 iterations with the objective already at its converged value (0.18,
+  0.22, 0.51); the two 5 m/s ones had 133 and 258 restoration iterations. The list was
+  tuned on 9.2 m/s.
 - **Windows wasn't tested.** The same options can be set in `main.m` (PredSim
   `linux/README.md`).
 - **Result files:** `/scratch/user/<user>/predsim-night/` on Bunya holds every run
