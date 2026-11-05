@@ -806,7 +806,7 @@ first speed of `main.m`'s loop (9.2 m/s) counts.
 | | epyc5 | Optimal | 926 | 5.794 | 78 | 10.0 |
 | | epyc4, prebuilt stack | Optimal | 1187 | 5.777 | 70 | 9.9 |
 | | epyc4, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Optimal | 622 | 5.801 | 35 | 9.5 |
-| | epyc5, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Still running: objective 5.81 at iteration 489 | | | |  |
+| | epyc5, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Optimal | 622 | 5.801 | 46 | 9.4 |
 | The same list passed as `PREDSIM_IPOPT_OPTIONS` on `04839db` | epyc4 | Optimal | 926 | 5.794 | 55 | 9.6 |
 | | epyc3 | Optimal | 926 | 5.794 | 76 | 9.7 |
 | First default (`04839db`) | epyc4, `OPENBLAS_CORETYPE=auto` | Optimal | 1161 | 5.832 | 71 | 9.5 |
@@ -824,9 +824,9 @@ benchmark copies:
 |---|---|---|---|---|---|
 | Half cycle | epyc4, source | Optimal | 586 | 5.329 | 32 |
 | | epyc4, prebuilt | Optimal | 562 | 5.328 | 31 |
-| | epyc5, source | Still running: objective 5.33 at iteration 478 |
-| Full cycle | epyc4, prebuilt | Still running: objective 5.81 at iteration 666 |
-| | epyc4, source, 4 threads | Still running: objective 5.77 at iteration 782 |
+| | epyc5, source | Optimal | 586 | 5.329 | 45 |
+| Full cycle | epyc4, prebuilt | Optimal | 744 | 5.808 | 43 |
+| | epyc4, source, 4 threads | Optimal | 910 | 5.773 | 45 |
 
 - **The node type no longer matters.** With the path pinned, epyc3, epyc4 and epyc5 ended at
   the same iteration (926) and the same objective, and so did the benchmark run with the same
@@ -834,11 +834,11 @@ benchmark copies:
 - **The Cooperlake path converges too.** This is the path epyc4 picks without the pin, where the
   first failures were seen. With the default list it reached Optimal on both problems, at the
   same optima as the pinned runs (5.33 on the half-cycle problem, 5.80 on the full-cycle one), by
-  a different route and here in fewer iterations. The pin is still what makes two runs identical.
+  a different route and here in fewer iterations. epyc4 and epyc5 share that path and matched
+  each other exactly. The pin is still what makes a run on epyc3 match one on epyc4.
 - **The prebuilt stack converged** to the slightly lower 5.777 in 1,187 iterations.
 - **The first default converged but slowly:** four runs took 71 to 123 minutes and four were
   still polishing after more than 1,800 iterations.
-- Rows marked "still running" had not finished when this was last updated.
 - **Ipopt's defaults fail through the same path,** so the difference is the settings.
 
 ### Other speeds
