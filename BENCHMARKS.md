@@ -17,7 +17,7 @@ How each bug behind these results was found and fixed is in
 | CPU-tuned CasADi? | Small gain: about 3% overall in the one clean comparison. See [long runs](#long-runs-no-solution-found). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
-| Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). |
+| Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). **Prebuilt did worse on optimality at MA97's default pivoting:** none of its runs reached a solution, while most source runs on the same problem did. With tighter pivoting, both stacks reached one on both paths. See [prebuilt vs source](#prebuilt-vs-source-optimality). |
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
 | Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first step is very sensitive to that. Every path tested differs, not only AVX-512. See [what changes the result](#what-changes-the-result). |
@@ -519,6 +519,29 @@ Paths were logged only for the Haswell runs and epyc3 prebuilt; the others are i
 - **The stack matters separately.** On the same path, source reached Optimal and prebuilt ended in local infeasibility. That's one run each on a sensitive problem. Source and prebuilt first differ at iteration 6.
 - **Thread count matters separately.** epyc3 at 1, 4 and 8 threads split at iterations 26–32, even though MA97 is designed to give the same answer at any thread count. The cause isn't known; CPU allocations also differed.
 
+### Prebuilt vs source: optimality
+
+**At default pivoting thresholds, prebuilt CasADi did worse than source on optimality.** On this
+problem, 0 of 5 prebuilt runs reached Optimal, against 6 of 8 source runs. Each count includes one run
+that repeated another line for line. **With tighter pivoting, that gap closed:** both prebuilt runs
+reached Optimal. Run pairs with the same solver, node and OpenBLAS path:
+
+| Solver, path | Source | Prebuilt |
+|---|---|---|
+| MA97 4 threads, Cooperlake | Optimal, 86.21 | Cap, 100.3, violation 0.64 |
+| MA97 4 threads, Haswell | Optimal, 5.36 | Local infeasibility, 18.63, violation 0.0013 |
+| MA57, Cooperlake | Cap, 110.4, violation 0.16 | Cap, 98.2, violation 0.26 |
+| MA97 4 threads, Cooperlake, tighter pivoting | Optimal, 5.64, 2193 s | Optimal, 5.36, 3502 s |
+| MA97 4 threads, Haswell, tighter pivoting | Optimal, 27.66, 1723 s | Optimal, 24.54, 2412 s |
+
+- **MA97, default pivoting:** source won both pairs. It reached Optimal where prebuilt didn't, and neither prebuilt run produced a running gait (stance 100% and 0% of the cycle).
+- **MA97, tighter pivoting:** both stacks reached Optimal. Prebuilt's objective was lower on both paths, but it took more iterations and more solver time.
+- **MA57:** neither run solved it. Prebuilt's objective is lower, but its violation is higher, so the objectives can't be compared directly.
+- **The earlier problem points the same way:** in [the long runs](#by-casadi-build), neither stack found a solution, but prebuilt ended with the higher violation on both nodes (0.83 against 0.0037 on epyc3, 0.023 against 0.0030 on epyc4).
+
+These are few runs on a sensitive problem, and the cause isn't known. Default stack choices haven't
+changed: they're based on speed.
+
 ### OpenBLAS paths and pivoting, first 100 iterations
 
 Source stack, MA97 on 4 threads, 100-iteration cap. The default and Haswell controls
@@ -538,11 +561,33 @@ reproduced their long runs line for line. Iteration 1:
 | epyc4, MUMPS, for comparison | 2.6204e6 | -0.3 | none | 23 | |
 
 - **It isn't specific to AVX-512.** Prescott, Sandybridge and Haswell differ from each other as much as from the AVX-512 paths. SkylakeX, Cooperlake and epyc4's and epyc5's defaults match for all 100 iterations.
-- **Tighter pivoting removes most of the sensitivity.** With `ma97_u` at 1e-4 or 1e-2 (default 1e-8), Cooperlake and Haswell match at iteration 1, and match epyc4 MUMPS's printed line. They first differ at iteration 45 and 59, instead of 1. At 1e-2 they were still about 1 part in a million apart at iteration 100.
+- **Tighter pivoting removes most of the early sensitivity.** With `ma97_u` at 1e-4 or 1e-2 (default 1e-8), Cooperlake and Haswell match at iteration 1, and match epyc4 MUMPS's printed line. They first differ at iteration 45 and 59, instead of 1. At 1e-2 they were still about 1 part in a million apart at iteration 100.
 - **No sign of an AVX-512 bug,** but kernel accuracy wasn't measured directly.
 - **Cost over 100 iterations:** Ipopt time was within about 17% of the default, though these are single runs on different paths.
 
-Whether tighter pivoting improves convergence hasn't been tested: these runs stop at 100 iterations.
+### Tighter pivoting, full-length runs
+
+MA97, 4 threads, EPYC 9454 nodes, 5000-iteration cap. Tighter means `ma97_u` 1e-2 and `ma97_umax` 1e-1;
+default is 1e-8 and 1e-4. Each row is one run. Restoration counts iterations marked `r` in the log.
+
+| Stack | Path | Pivoting | Exit | Iterations | Restoration | Objective | Ipopt s |
+|---|---|---|---|---|---|---|---|
+| source | Cooperlake | default | Optimal | 974 | 627 | 86.21 | 2276 |
+| | | tighter | Optimal | 951 | 30 | 5.64 | 2193 |
+| source | Haswell | default | Optimal | 3174 | 1295 | 5.36 | 7814 |
+| | | tighter | Optimal | 627 | 27 | 27.66 | 1723 |
+| prebuilt | Cooperlake | default | Cap | 5000 | 4924 | 100.3 | 10931 |
+| | | tighter | Optimal | 1213 | 390 | 5.36 | 3502 |
+| prebuilt | Haswell | default | Local infeasibility | 2462 | 420 | 18.63 | 5969 |
+| | | tighter | Optimal | 865 | 31 | 24.54 | 2412 |
+
+- **Every tighter run reached Optimal,** with 12 to 48 times fewer restoration iterations. Total solver time fell 4% to 78%. Time per iteration was 2.31 to 2.89 s, against 2.19 to 2.46 s at default, on different nodes.
+- **It doesn't make results match.** Paths still split at iteration 57 to 59 and stacks at 57 to 69, and objectives ranged from 5.36 to 27.66. Pin the path and stack as well: see [reproducible results](#reproducible-results).
+- **It isn't always better.** Source on Haswell went from 5.36 to 27.66. Both Cooperlake runs ended near 5.5, and both Haswell runs ended above 24.
+- **Two routes reached the same gait.** Prebuilt Cooperlake with tighter pivoting (5.361) and source Haswell at default (5.358) differ by 0.15° RMS across joint angles. 5.36 is the lowest objective seen on this problem, but that doesn't prove it's the global optimum.
+- **The higher objectives mostly differ in the arms and actuator cost.** Compared with the 5.36 gait, hip, knee and ankle angles differ by 1.0° RMS for 5.64, 3.1° for 27.66 and 7.4° for 24.54, while arm coordinates differ by up to 61°. The actuator excitation term is 1290 at 5.36, 1544 at 5.64, 18448 at 24.54 and 21945 at 27.66.
+
+**Limits:** one speed (9.2) and one starting guess on the `239530b` problem. These settings haven't been repeated, or run on epyc3 or on the current `main.m` problem, where no long run has found a solution.
 
 ## Reproducing
 

@@ -643,6 +643,9 @@ and the adaptive barrier value is then chosen from that factorisation.
    which don't use AVX-512. SkylakeX, Cooperlake and epyc5 all matched each other.
 5. With `ma97_u` at 1e-4 or 1e-2, Cooperlake and Haswell matched at iteration 1, and matched epyc4
    MUMPS's line. They then stayed together until iteration 45 or 59.
+6. Full-length runs at `ma97_u` 1e-2 all reached Optimal on both stacks and both paths, with far fewer
+   restoration iterations. That fits the borderline-pivot explanation but doesn't prove it. Paths still
+   split at iteration 57 to 59, and objectives ranged from 5.36 to 27.66.
 
 **Is it a bug?** None has been shown. The results fit a borderline first step better than
 one faulty path, but OpenBLAS's accuracy wasn't measured directly.
@@ -657,8 +660,9 @@ copy those files instead of rebuilding them.
 **Fix.** Pin the path, stack, solver and threads; see
 [reproducible results](BENCHMARKS.md#reproducible-results). `linux/write_rerun_slurm.sh` now also
 records `OPENBLAS_CORETYPE`, so a rerun keeps a forced path. This makes results repeat, but doesn't
-improve convergence. Tighter pivoting might, but it has only been run for 100 iterations. Results
-are in [what changes the result](BENCHMARKS.md#what-changes-the-result).
+improve convergence. Tighter pivoting did improve it in four full-length runs on one problem, but
+results still depend on the path and stack, and one run reached a worse objective than at default.
+Results are in [what changes the result](BENCHMARKS.md#what-changes-the-result).
 
 ## Reference: settings used
 
@@ -729,7 +733,8 @@ scontrol show node <node> | grep ActiveFeatures
 - **Source vs prebuilt on epyc3 with HSL:** the selector's choice was measured with MUMPS only.
 - **Time to a solution:** all 18 long runs on `main.m`'s real problem failed to find a solution, whichever solver or stack they used. The cause isn't established, and rankings by time to a solution need a setup that solves. See [long runs](BENCHMARKS.md#long-runs-no-solution-found).
 - **HSL scaling options:** not tested yet.
-- **Tighter pivoting (`ma97_u`):** makes OpenBLAS paths agree for longer, but whether it improves convergence is untested.
+- **Tighter pivoting (`ma97_u`):** four of four runs reached Optimal on one speed and starting guess, but at different objectives. Not yet repeated, or run on epyc3 or the current `main.m` problem. Not a default.
+- **`Issue when reconstructing optimal cost wrt stats`:** printed by every run on the `239530b` problem. The difference is 999 times the objective, which fits `OCP_formulation.m` dividing the objective by 1000 while the check doesn't. It only prints a message, and the solve isn't affected.
 - **MA97 and thread count:** MA97 is designed to give the same answer at any thread count, but runs split at iterations 26 to 32. The cause isn't known.
 - **OpenBLAS accuracy on each path:** not measured directly ([5.7](#57-the-same-job-gives-different-results-by-cpu-type)).
 - **Possible upstream reports:** suggesting `RTLD_DEEPBIND` to Ipopt, and MATLAB's unrenamed `METIS_SetDefaultOptions` to MathWorks. Not filed.
