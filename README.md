@@ -113,9 +113,18 @@ sbatch ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
 
 | What | Where |
 |---|---|
+| Results | `/scratch/user/$USER/PredSimResults/<subject>/` |
+| MATLAB / IPOPT log | `/scratch/user/$USER/predsim-logs/main-<timestamp>.log` |
 | Job output | `predsim-<jobid>.out` in the directory you submitted from |
-| MATLAB / IPOPT log | `~/PredSim/logs/main-<timestamp>.log` |
-| Results | `~/PredSimResults/<subject>/` |
+
+**Scratch is not long-term storage.** Results and logs go to scratch because home has a 50 GB
+quota, but Bunya clears scratch files that go unused and scratch isn't backed up. Copy
+anything you want to keep to RDM or another backed-up place soon after the run.
+
+- **To write somewhere else:** `--export=ALL,PREDSIM_RESULTS_ROOT=<folder>` for results and `PREDSIM_LOG_DIR=<folder>` for logs. `PREDSIM_RESULTS_ROOT=$HOME/PredSimResults` gives the old location.
+- **The speed loop follows the results folder:** each speed in `main.m` starts from the previous speed's result, and looks for it in the same folder the results are written to.
+- **Job output:** `sbatch` writes `predsim-<jobid>.out` wherever you run it from, so `cd` to a scratch folder first if you want that there too.
+- **Needs PredSim `9c7c530` or later.** Older checkouts write results next to the PredSim folder whatever these are set to.
 
 The default job requests one physical core (`--cpus-per-task=2`), 16 GB and
 7 days, and prefers the fastest node type (see [CPU types](#cpu-types-on-bunya)).

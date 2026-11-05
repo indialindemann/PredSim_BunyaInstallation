@@ -46,13 +46,18 @@
 #                    speed: prebuilt was about 7% faster on epyc4 with MUMPS.
 #   OPENBLAS_CORETYPE    OpenBLAS code path (default: Haswell on every node type;
 #                    "auto" lets OpenBLAS pick by CPU). See the note in the code below.
+#   PREDSIM_RESULTS_ROOT  results folder root (default: /scratch/user/$USER/PredSimResults)
+#   PREDSIM_LOG_DIR      MATLAB log folder (default: /scratch/user/$USER/predsim-logs)
 #   PREDSIM_IPOPT_OPTIONS  Ipopt options as "name=value;name=value" (default: the
 #                    list set in PredSim's linux/run_predsim.sh; "none" gives
 #                    Ipopt's own defaults, which did not converge on the 3D
 #                    sprinting problems).
 #
-# MATLAB output: ~/PredSim/logs/<script>-<timestamp>.log (and this job's .out).
-# Results: ~/PredSimResults/<subject>/
+# Where output goes (scratch by default; SCRATCH IS NOT LONG-TERM STORAGE, copy
+# what you want to keep to RDM or another backed-up place):
+#   Results        /scratch/user/$USER/PredSimResults/<subject>/   (PREDSIM_RESULTS_ROOT)
+#   MATLAB log     /scratch/user/$USER/predsim-logs/<script>-<timestamp>.log   (PREDSIM_LOG_DIR)
+#   This job's .out  predsim-<jobid>.out in the directory you submit from
 
 set -euo pipefail
 
@@ -94,5 +99,14 @@ case "${OPENBLAS_CORETYPE:-Haswell}" in
     *) export OPENBLAS_CORETYPE="${OPENBLAS_CORETYPE:-Haswell}" ;;
 esac
 echo "== OpenBLAS code path: ${OPENBLAS_CORETYPE:-auto (picked by CPU)}; CasADi stack mode: ${PREDSIM_CASADI_MODE:-site default}"
+
+# Results and MATLAB logs go to scratch unless told otherwise: home has a 50 GB
+# quota and fills quickly. Scratch is NOT long-term storage (files that go unused
+# are cleared), so copy results you want to keep somewhere backed up.
+# The folders are created here, so a cleared scratch is not a problem.
+export PREDSIM_RESULTS_ROOT="${PREDSIM_RESULTS_ROOT:-/scratch/user/$USER/PredSimResults}"
+export PREDSIM_LOG_DIR="${PREDSIM_LOG_DIR:-/scratch/user/$USER/predsim-logs}"
+mkdir -p "$PREDSIM_RESULTS_ROOT" "$PREDSIM_LOG_DIR"
+echo "== results: $PREDSIM_RESULTS_ROOT/<subject>/   logs: $PREDSIM_LOG_DIR"
 
 exec "$PREDSIM_DIR/linux/run_predsim.sh" --env "$PREDSIM_ENV" --script "$PREDSIM_SCRIPT"
