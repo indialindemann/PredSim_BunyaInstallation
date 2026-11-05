@@ -40,6 +40,8 @@
 #   PREDSIM_ENV      stack env file (default: ~/.predsim/env.sh, which picks the
 #                    faster stack for this node: source on epyc3, else prebuilt)
 #   PREDSIM_CASADI_MODE  prebuilt|source: force one stack on every node type
+#   OPENBLAS_CORETYPE    OpenBLAS code path (default: Haswell on every node type;
+#                    "auto" lets OpenBLAS pick by CPU). See the note in the code below.
 #
 # MATLAB output: ~/PredSim/logs/<script>-<timestamp>.log (and this job's .out).
 # Results: ~/PredSimResults/<subject>/
@@ -55,4 +57,31 @@ PREDSIM_SCRIPT="${PREDSIM_SCRIPT:-main}"
 
 echo "== $(date -Is) job ${SLURM_JOB_ID:-none} on $(hostname) ($(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //')), ${SLURM_CPUS_PER_TASK:-?} CPUs"
 echo "== env: $PREDSIM_ENV -> $(readlink -f "$PREDSIM_ENV")"
+
+# OpenBLAS code path: Haswell on every node type, unless overridden.
+#
+# This is NOT a performance setting. It is here so that a result doesn't depend
+# on which node type the job lands on. Left alone, OpenBLAS picks its code path
+# from the CPU (Zen on epyc3, Cooperlake on epyc4 and epyc5). The paths round
+# differently, and with MA97 that was enough to change PredSim's result and
+# whether it converged (BENCHMARKS.md, "What changes the result").
+#
+#   OPENBLAS_CORETYPE=auto     OpenBLAS picks by CPU, as it does without this block
+#   OPENBLAS_CORETYPE=<name>   any other OpenBLAS path, e.g. Zen or Cooperlake
+#
+# Haswell needs AVX2, which every Bunya node type has. An empty value is treated
+# as unset, because OpenBLAS would fall back to an old generic path for it.
+#
+# The CasADi stack still changes with the node type unless PREDSIM_CASADI_MODE
+# is set, and that changes results too.
+#
+# Provisional default: tested with MA97 on 4 threads, epyc4 forced to Haswell
+# against epyc3. Revisit it if later runs show a better choice
+# (BENCHMARKS.md, "Reproducible results").
+case "${OPENBLAS_CORETYPE:-Haswell}" in
+    auto|Auto|AUTO) unset OPENBLAS_CORETYPE ;;
+    *) export OPENBLAS_CORETYPE="${OPENBLAS_CORETYPE:-Haswell}" ;;
+esac
+echo "== OpenBLAS code path: ${OPENBLAS_CORETYPE:-auto (picked by CPU)}"
+
 exec "$PREDSIM_DIR/linux/run_predsim.sh" --env "$PREDSIM_ENV" --script "$PREDSIM_SCRIPT"

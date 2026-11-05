@@ -130,10 +130,23 @@ sbatch --export=ALL,PREDSIM_SCRIPT=myOtherMain ~/PredSim_BunyaInstallation/bunya
 For a quick test, set `S.solver.max_iter` to a few tens in `main.m` first.
 At the default 5000 iterations a run takes hours.
 
-**Results can change with the node type.** To keep them the same across node types:
+**Jobs fix the OpenBLAS code path to Haswell.** `run_predsim.slurm` sets
+`OPENBLAS_CORETYPE=Haswell` on every node type. This isn't for speed. It's there so a
+result doesn't depend on which node type the job lands on:
+
+- **Why:** OpenBLAS normally picks its code path from the CPU. The paths round differently, and that was enough to change PredSim's result and whether it converged.
+- **To turn it off:** pass `auto`, and OpenBLAS picks by CPU again. Any other OpenBLAS path name also works.
+- **Status:** provisional. It was tested with MA97 on 4 threads, and may change if later runs show a better default.
 
 ```bash
-sbatch --export=ALL,OPENBLAS_CORETYPE=Haswell,PREDSIM_CASADI_MODE=source ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
+sbatch --export=ALL,OPENBLAS_CORETYPE=auto ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
+```
+
+**The CasADi stack still changes with the node type,** and that changes results too. To
+keep results the same across node types, fix the stack as well:
+
+```bash
+sbatch --export=ALL,PREDSIM_CASADI_MODE=source ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
 ```
 
 See [Reproducible results](BENCHMARKS.md#reproducible-results) for what else has to match.

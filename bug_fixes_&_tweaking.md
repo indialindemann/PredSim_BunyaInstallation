@@ -658,7 +658,9 @@ random seed, though, and a Windows batch worker built a different one from deskt
 copy those files instead of rebuilding them.
 
 **Fix.** Pin the path, stack, solver and threads; see
-[reproducible results](BENCHMARKS.md#reproducible-results). `linux/write_rerun_slurm.sh` now also
+[reproducible results](BENCHMARKS.md#reproducible-results). `bunya/run_predsim.slurm` now sets
+`OPENBLAS_CORETYPE=Haswell` by default, so the path no longer follows the node type. That's for
+matching results, not speed, and `OPENBLAS_CORETYPE=auto` turns it off. `linux/write_rerun_slurm.sh` now also
 records `OPENBLAS_CORETYPE`, so a rerun keeps a forced path. This makes results repeat, but doesn't
 improve convergence. Tighter pivoting did improve it in four full-length runs on one problem, but
 results still depend on the path and stack, and one run reached a worse objective than at default.
@@ -693,7 +695,7 @@ Results are in [what changes the result](BENCHMARKS.md#what-changes-the-result).
 | `CFLAGS` | Passes the CPU flags to CMake | `run_predsim.sh` |
 | `OMP_NUM_THREADS` | MA97 and OpenMP threads, default 1 | `env.sh`, or you |
 | `OPENBLAS_NUM_THREADS` | BLAS threads, default 1 | `env.sh`, or you |
-| `OPENBLAS_CORETYPE` | Force the OpenBLAS code path, such as `Haswell` | You |
+| `OPENBLAS_CORETYPE` | OpenBLAS code path. `Haswell` by default in Slurm jobs, so results don't follow the node type; `auto` picks by CPU | `run_predsim.slurm`, or you |
 | `OPENBLAS_VERBOSE` | `2` prints the path OpenBLAS picks | You |
 | `EBROOTOPENSIMAD` | opensimAD libraries, no download | `env.sh` |
 | `PREDSIM_RERUN_SCRIPT` | Rerun script to copy beside results | `run_predsim.sh` |

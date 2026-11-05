@@ -21,7 +21,7 @@ How each bug behind these results was found and fixed is in
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
 | Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first step is very sensitive to that. Every path tested differs, not only AVX-512. See [what changes the result](#what-changes-the-result). |
-| How do I get the same result every time? | Force the OpenBLAS path or use one CPU type, and keep the stack, solver and threads the same. See [reproducible results](#reproducible-results). |
+| How do I get the same result every time? | Bunya jobs now fix the OpenBLAS path to Haswell by default. Keep the stack, solver and threads the same as well. See [reproducible results](#reproducible-results). |
 
 ## Reproducible results
 
@@ -34,21 +34,28 @@ To get the same result every time, keep all of these the same:
 | Solver and threads | `PREDSIM_HSL_SOLVER`, `OMP_NUM_THREADS` and `--cpus-per-task` |
 | Code and inputs | The same commit, `main.m`, solver options and starting guess, and the same muscle fit and `F_*` files in `Subjects/<subject>` |
 
-**Option 1: force the OpenBLAS path.** Use this if jobs can land on different node types:
+**Option 1: force the OpenBLAS path.** `bunya/run_predsim.slurm` does this by default: it sets
+`OPENBLAS_CORETYPE=Haswell` on every node type. That's for matching results, not speed. Only the
+stack is left to fix:
 
 ```bash
-sbatch --export=ALL,OPENBLAS_CORETYPE=Haswell,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
+sbatch --export=ALL,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
 ```
 
 Outside Slurm, run `export OPENBLAS_CORETYPE=Haswell` first. The CPU must support AVX2.
 
-**Option 2: use one CPU type.** Set both options, and don't set `OPENBLAS_CORETYPE`:
+**Option 2: use one CPU type.** Set both node options, and pass `auto` so OpenBLAS picks its path
+by CPU:
 
 ```bash
-sbatch --constraint=epyc4 --prefer=epyc4 --export=ALL,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
+sbatch --constraint=epyc4 --prefer=epyc4 --export=ALL,OPENBLAS_CORETYPE=auto,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
 ```
 
+Runs from before this default used the CPU's own path unless they forced one, so pass `auto` to
+repeat those.
+
 **To check it worked:**
+- The job's `.out` file prints `== OpenBLAS code path:` near the top.
 - Add `OPENBLAS_VERBOSE=2` to `--export`. With option 1, every `Core:` line in the log should say `Haswell`.
 - Compare the runs' exit message, iteration count and objective, which should match to every printed digit.
 
