@@ -801,12 +801,12 @@ first speed of `main.m`'s loop (9.2 m/s) counts.
 | Settings | Node | Exit | Iterations | Objective | Minutes | Peak GB |
 |---|---|---|---|---|---|---|
 | Default list (`d2147e4`) | epyc4 | Optimal | 926 | 5.794 | 55 | 9.7 |
-| | epyc3 | Still running: objective 5.79 at iteration 677 | | | |  |
+| | epyc3 | Optimal | 926 | 5.794 | 81 | 9.7 |
 | | epyc4 (no node flags) | Optimal | 926 | 5.794 | 55 | 9.7 |
-| | epyc5 | Still running: objective 5.79 at iteration 703 | | | |  |
-| | epyc4, prebuilt stack | Still running: objective 5.78 at iteration 1041 | | | |  |
-| | epyc4, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Still running: objective 18.49 at iteration 234 | | | |  |
-| | epyc5, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Still running: objective 318.37 at iteration 150 | | | |  |
+| | epyc5 | Optimal | 926 | 5.794 | 78 | 10.0 |
+| | epyc4, prebuilt stack | Optimal | 1187 | 5.777 | 70 | 9.9 |
+| | epyc4, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Optimal | 622 | 5.801 | 35 | 9.5 |
+| | epyc5, `OPENBLAS_CORETYPE=auto` (Cooperlake) | Still running: objective 5.81 at iteration 489 | | | |  |
 | The same list passed as `PREDSIM_IPOPT_OPTIONS` on `04839db` | epyc4 | Optimal | 926 | 5.794 | 55 | 9.6 |
 | | epyc3 | Optimal | 926 | 5.794 | 76 | 9.7 |
 | First default (`04839db`) | epyc4, `OPENBLAS_CORETYPE=auto` | Optimal | 1161 | 5.832 | 71 | 9.5 |
@@ -817,19 +817,25 @@ first speed of `main.m`'s loop (9.2 m/s) counts.
 | Ipopt defaults (`PREDSIM_IPOPT_OPTIONS=none`) | epyc3 | Stopped by hand: objective 124, violation 0.7, 910 restoration iterations after 2,929 | | | | |
 
 **Without the Haswell pin.** The first failures were epyc4 runs on their own Cooperlake path, so
-the default list was also run there with `OPENBLAS_CORETYPE=auto`, 1 thread, through the
+the default list was also run there with `OPENBLAS_CORETYPE=auto`, 1 thread unless stated, through the
 benchmark copies:
 
 | Problem | Node, stack | Exit | Iterations | Objective | Minutes |
 |---|---|---|---|---|---|
-| Half cycle | epyc4, source | Still running: objective 9.47 at iteration 246 |
-| | epyc4, prebuilt | Still running: objective 6.40 at iteration 254 |
-| | epyc5, source | Still running: objective 83.05 at iteration 152 |
-| Full cycle | epyc4, prebuilt | Still running: objective 19.66 at iteration 239 |
-| | epyc4, source, 4 threads | Still running: objective 10.39 at iteration 282 |
+| Half cycle | epyc4, source | Optimal | 586 | 5.329 | 32 |
+| | epyc4, prebuilt | Optimal | 562 | 5.328 | 31 |
+| | epyc5, source | Still running: objective 5.33 at iteration 478 |
+| Full cycle | epyc4, prebuilt | Still running: objective 5.81 at iteration 666 |
+| | epyc4, source, 4 threads | Still running: objective 5.77 at iteration 782 |
 
-- **The node type no longer matters.** epyc3 and epyc4 printed the same iteration count and
-  objective with the default list, and the benchmark run with the same settings matched them.
+- **The node type no longer matters.** With the path pinned, epyc3, epyc4 and epyc5 ended at
+  the same iteration (926) and the same objective, and so did the benchmark run with the same
+  settings. epyc4 took 55 minutes, epyc5 78 and a busy epyc3 node 81.
+- **The Cooperlake path converges too.** This is the path epyc4 picks without the pin, where the
+  first failures were seen. With the default list it reached Optimal on both problems, at the
+  same optima as the pinned runs (5.33 on the half-cycle problem, 5.80 on the full-cycle one), by
+  a different route and here in fewer iterations. The pin is still what makes two runs identical.
+- **The prebuilt stack converged** to the slightly lower 5.777 in 1,187 iterations.
 - **The first default converged but slowly:** four runs took 71 to 123 minutes and four were
   still polishing after more than 1,800 iterations.
 - Rows marked "still running" had not finished when this was last updated.
