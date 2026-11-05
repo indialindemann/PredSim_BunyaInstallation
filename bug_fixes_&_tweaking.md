@@ -38,6 +38,7 @@ covers how the problems were found and fixed.
 | [3.5](#35-coinhsl-can-silently-build-without-metis) | HSL could lose METIS unnoticed | Missing `metis.h` links a dummy | Install fails if METIS is absent |
 | [5.1](#51-the-install-check-passed-on-a-broken-stack) | Broken stack passed its check | Check only tested that it ran | Fail on BLAS errors |
 | [5.2](#52-timings-skewed-by-node-load) | Comparisons changed between runs | Busy shared nodes | Submit paired jobs together |
+| [5.7](#57-the-same-job-gives-different-results-by-cpu-type) | Same job, different result by CPU type | OpenBLAS picks its code path by CPU, and the first step is borderline | `OPENBLAS_CORETYPE`, or one CPU type |
 
 ## Part 1: Compiler flags and speed
 
@@ -609,6 +610,56 @@ results: prebuilt passed and the broken source runs failed.
 - **Threaded BLAS doesn't help:** MUMPS's internals went from 2.6–2.9 s to 3.1–4.0 s, and MA57's solver time didn't improve. Dense blocks in this problem are too small.
 - **OpenMP MUMPS isn't reproducible:** the objective at iteration 80 varied from 67.8 to 153.6.
 
+### 5.7 The same job gives different results by CPU type
+
+**Symptom.** With the same inputs, every epyc3 run on the source stack but one reached
+Optimal, while the first three epyc4 runs, on the prebuilt stack, all hit the 5000-iteration cap. Windows
+machines with different CPUs also disagreed. Each setup repeated its own result exactly.
+
+**Cause.** CoinHSL carries its own OpenBLAS, which picks a code path for the CPU at run time:
+Zen on epyc3, Cooperlake on epyc4 and epyc5, SapphireRapids on the Xeon 8468. These paths round
+differently. With MA97, that changes the first iteration:
+
+| Run | `lg(mu)` | `lg(rg)` | Step |
+|---|---|---|---|
+| MA97, Cooperlake | 2.8 | none | 9050 |
+| MA97, Haswell | -0.2 | -4.0 | 24 |
+| MUMPS and MA57 | about -0.3 | none | about 25 |
+
+The likely mechanism is an inference, not something traced. MA97's default pivot threshold
+is loose (`ma97_u` = 1e-8), so a rounding difference can flip the sign of a very small pivot. That
+changes the negative eigenvalue count, which Ipopt checks to decide whether to
+[regularise](https://github.com/coin-or/Ipopt/blob/stable/3.14/src/Algorithm/IpPDPerturbationHandler.cpp),
+and the adaptive barrier value is then chosen from that factorisation.
+
+**How it was found.**
+1. The first guess was AVX-512, because epyc4 has it and epyc3 doesn't. It didn't hold: epyc4 reached
+   Optimal on the source stack, and epyc3 failed at 1 thread.
+2. Disassembly showed the prebuilt stack wasn't adding AVX-512 either. Its Ipopt, MUMPS and OpenBLAS have no
+   AVX at all. The only AVX-512 found was in OpenBLAS 0.3.32, which both stacks' `libcoinhsl` bundle.
+3. Comparing iteration lines between logs showed where runs first split. Forcing Haswell on epyc4
+   then matched epyc3 for the whole run on both stacks (3175 and 2463 lines).
+4. Short runs on other paths each differed at iteration 1, including Prescott, Sandybridge and Haswell,
+   which don't use AVX-512. SkylakeX, Cooperlake and epyc5 all matched each other.
+5. With `ma97_u` at 1e-4 or 1e-2, Cooperlake and Haswell matched at iteration 1, and matched epyc4
+   MUMPS's line. They then stayed together until iteration 45 or 59.
+
+**Is it a bug?** None has been shown. The results fit a borderline first step better than
+one faulty path, but OpenBLAS's accuracy wasn't measured directly.
+
+**Other causes of different results.** Source and prebuilt split at iteration 6 on the same path:
+source reached Optimal and prebuilt ended in local infeasibility. epyc3 at 1, 4 and 8 threads split
+at iterations 26 to 32, though CPU allocations also differed. The muscle fit and `F_*.so` weren't the
+cause on Bunya, since they were byte-identical across the ten runs checked. The fit has no fixed
+random seed, though, and a Windows batch worker built a different one from desktop sessions, so
+copy those files instead of rebuilding them.
+
+**Fix.** Pin the path, stack, solver and threads; see
+[reproducible results](BENCHMARKS.md#reproducible-results). `linux/write_rerun_slurm.sh` now also
+records `OPENBLAS_CORETYPE`, so a rerun keeps a forced path. This makes results repeat, but doesn't
+improve convergence. Tighter pivoting might, but it has only been run for 100 iterations. Results
+are in [what changes the result](BENCHMARKS.md#what-changes-the-result).
+
 ## Reference: settings used
 
 ### Compiler and linker flags
@@ -638,6 +689,8 @@ results: prebuilt passed and the broken source runs failed.
 | `CFLAGS` | Passes the CPU flags to CMake | `run_predsim.sh` |
 | `OMP_NUM_THREADS` | MA97 and OpenMP threads, default 1 | `env.sh`, or you |
 | `OPENBLAS_NUM_THREADS` | BLAS threads, default 1 | `env.sh`, or you |
+| `OPENBLAS_CORETYPE` | Force the OpenBLAS code path, such as `Haswell` | You |
+| `OPENBLAS_VERBOSE` | `2` prints the path OpenBLAS picks | You |
 | `EBROOTOPENSIMAD` | opensimAD libraries, no download | `env.sh` |
 | `PREDSIM_RERUN_SCRIPT` | Rerun script to copy beside results | `run_predsim.sh` |
 
@@ -676,4 +729,7 @@ scontrol show node <node> | grep ActiveFeatures
 - **Source vs prebuilt on epyc3 with HSL:** the selector's choice was measured with MUMPS only.
 - **Time to a solution:** all 18 long runs on `main.m`'s real problem failed to find a solution, whichever solver or stack they used. The cause isn't established, and rankings by time to a solution need a setup that solves. See [long runs](BENCHMARKS.md#long-runs-no-solution-found).
 - **HSL scaling options:** not tested yet.
+- **Tighter pivoting (`ma97_u`):** makes OpenBLAS paths agree for longer, but whether it improves convergence is untested.
+- **MA97 and thread count:** MA97 is designed to give the same answer at any thread count, but runs split at iterations 26 to 32. The cause isn't known.
+- **OpenBLAS accuracy on each path:** not measured directly ([5.7](#57-the-same-job-gives-different-results-by-cpu-type)).
 - **Possible upstream reports:** suggesting `RTLD_DEEPBIND` to Ipopt, and MATLAB's unrenamed `METIS_SetDefaultOptions` to MathWorks. Not filed.

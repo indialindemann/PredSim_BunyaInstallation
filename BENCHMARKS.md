@@ -13,13 +13,85 @@ How each bug behind these results was found and fixed is in
 | Biggest single speed-up? | Compiling the model's external function with optimisation: **1.8× faster** (8.4 → 4.7 s per iteration). Now the default. |
 | CPU-specific flags for it? | `-march=znver3` (FMA, AVX2) makes each call 28% faster on epyc3 and epyc4, about 12% per iteration. Now the Bunya default. `-march=znver4` (AVX-512) is no better. See [section 1b](#1b-cpu-flags-for-the-external-function--marchznver3). |
 | Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL](#hsl-ma97-and-ma57)). |
-| HSL instead of MUMPS? | Unsettled. Over 80 iterations MA57 was 20–38% faster per iteration, but that didn't hold on longer runs, where MA97 on 4 threads did best. No long run reached a solution, so time to a solution isn't measured. See [HSL](#hsl-ma97-and-ma57) and [long runs](#long-runs-no-solution-found). |
+| HSL instead of MUMPS? | Unsettled. Over 80 iterations MA57 was 20–38% faster per iteration, but that didn't hold on longer runs, where MA97 on 4 threads did best. The long runs on the current problem didn't reach a solution; on the problem from `239530b` results depend heavily on small numerical differences, so one run can't rank solvers. See [HSL](#hsl-ma97-and-ma57), [long runs](#long-runs-no-solution-found) and [what changes the result](#what-changes-the-result). |
 | CPU-tuned CasADi? | Small gain: about 3% overall in the one clean comparison. See [long runs](#long-runs-no-solution-found). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
 | Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). |
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
+| Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first step is very sensitive to that. Every path tested differs, not only AVX-512. See [what changes the result](#what-changes-the-result). |
+| How do I get the same result every time? | Force the OpenBLAS path or use one CPU type, and keep the stack, solver and threads the same. See [reproducible results](#reproducible-results). |
+
+## Reproducible results
+
+To get the same result every time, keep all of these the same:
+
+| Keep the same | How |
+|---|---|
+| OpenBLAS code path | Option 1 or 2 below |
+| CasADi stack | Set `PREDSIM_CASADI_MODE` to `source` or `prebuilt`; otherwise the stack can change with the node type |
+| Solver and threads | `PREDSIM_HSL_SOLVER`, `OMP_NUM_THREADS` and `--cpus-per-task` |
+| Code and inputs | The same commit, `main.m`, solver options and starting guess, and the same muscle fit and `F_*` files in `Subjects/<subject>` |
+
+**Option 1: force the OpenBLAS path.** Use this if jobs can land on different node types:
+
+```bash
+sbatch --export=ALL,OPENBLAS_CORETYPE=Haswell,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
+```
+
+Outside Slurm, run `export OPENBLAS_CORETYPE=Haswell` first. The CPU must support AVX2.
+
+**Option 2: use one CPU type.** Set both options, and don't set `OPENBLAS_CORETYPE`:
+
+```bash
+sbatch --constraint=epyc4 --prefer=epyc4 --export=ALL,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
+```
+
+**To check it worked:**
+- Add `OPENBLAS_VERBOSE=2` to `--export`. With option 1, every `Core:` line in the log should say `Haswell`.
+- Compare the runs' exit message, iteration count and objective, which should match to every printed digit.
+
+**Limits:**
+- **Tested with:** MA97 on 4 threads. epyc4 forced to Haswell matched epyc3 on its default path for whole runs, on both stacks. Forcing Haswell on epyc3 or epyc5, and forcing it with MA57 or MUMPS, weren't tested.
+- **OpenMP MUMPS:** `--mumps-openmp` builds don't repeat, so don't use them when results must match.
+- **Rerun scripts:** they keep the CPU type, stack, threads and `OPENBLAS_CORETYPE`. Older rerun scripts don't record `OPENBLAS_CORETYPE`, so add it to those by hand.
+- **Convergence:** these settings make a result repeat, not converge. A run that fails will fail the same way.
+
+### On Windows
+
+This aims to match Windows machines to each other, not to Linux. **It hasn't been tested yet.**
+
+1. Use the same commit and `main.m` on every machine. `git status` should show no changes.
+2. Pick one machine as the reference and copy its whole `Subjects\<subject>` folder to the others, so they share the muscle fit and `F_*` files.
+3. Start MATLAB from this file on every machine, for example `start_predsim.bat`:
+
+```bat
+@echo off
+set OPENBLAS_CORETYPE=Haswell
+set OMP_NUM_THREADS=8
+set OPENBLAS_NUM_THREADS=1
+set MKL_CBWR=AVX2
+"C:\Program Files\MATLAB\R2023b\bin\matlab.exe"
+```
+
+4. Check the settings in MATLAB before running:
+
+```matlab
+getenv('OPENBLAS_CORETYPE')   % Haswell
+getenv('OMP_NUM_THREADS')     % 8
+version('-blas')              % should show CNR branch AVX2
+```
+
+5. Run each machine the same way, either as a desktop session or as a batch job, then compare the logs. Differences in the header and paths are expected, but the iteration lines should match:
+
+```bat
+fc /n machineA_log.txt machineB_log.txt
+```
+
+`OPENBLAS_CORETYPE` only works if the OpenBLAS in the Windows CoinHSL package picks its path at run time, which hasn't been confirmed. If the iteration lines differ from the first iteration, this may be why.
+
+The reasons are in [bug fixes 5.7](bug_fixes_%26_tweaking.md#57-the-same-job-gives-different-results-by-cpu-type).
 
 ## Method
 
@@ -416,6 +488,61 @@ results and break Ipopt's NaN checks.
 - **Tuning is a small gain.** `nlp_jac_g` is about 5–7% faster per call. The one clean comparison is epyc3, where source and tuned took the same path: 4.00 against 4.12 hours, about 3%. There, faster evaluations were partly offset by solver time that was no faster.
 - **epyc4's total times differ more,** but those stacks took different paths, so that isn't a speed ranking. Tuned builds aren't offered by default.
 - **Runs reproduce exactly.** Repeats gave identical iteration counts and final values, and so did the earlier batch for epyc3 source and epyc4 prebuilt.
+
+## What changes the result
+
+A different problem from the long runs above: `main.m` and `OCP_formulation.m` from
+PredSim `239530b` (half gait cycle, no touchdown bounds), with the same subject, speed,
+starting guess and 5000-iteration cap. Muscle fit and `F_*.so` were byte-identical across the
+ten runs where this was checked. Each row is one run. Objectives are unscaled.
+
+| Node | Stack | Solver | OpenBLAS path | Exit | Iterations | Objective | Violation | Ipopt s |
+|---|---|---|---|---|---|---|---|---|
+| epyc3 | source | MUMPS | n/a | Optimal | 1687 | 80.87 | | 7703 |
+| | | MA57 | Zen | Optimal | 3402 | 32.85 | | 11545 |
+| | | MA97, 1 thread | Zen | Local infeasibility | 950 | 12.45 | 0.0013 | 4567 |
+| | | MA97, 4 threads | Zen | Optimal | 3174 | 5.36 | | 9176 |
+| | | MA97, 8 threads | Zen | Optimal | 2134 | 5.36 | | 7040 |
+| | prebuilt | MA97, 4 threads | Zen | Local infeasibility | 2462 | 18.63 | 0.0013 | 8391 |
+| epyc4 | source | MA57 | Cooperlake | Cap | 5000 | 110.4 | 0.16 | 12367 |
+| | | MA97, 4 threads | Cooperlake | Optimal | 974 | 86.21 | | 2276 |
+| | | MA97, 4 threads | Haswell (forced) | Optimal | 3174 | 5.36 | | 7814 |
+| | prebuilt | MUMPS | n/a | Cap | 5000 | 132.0 | 0.043 | 23976 |
+| | | MA57 | Cooperlake | Cap | 5000 | 98.2 | 0.26 | 13653 |
+| | | MA97, 4 threads | Cooperlake | Cap | 5000 | 100.3 | 0.64 | 10931 |
+| | | MA97, 4 threads | Haswell (forced) | Local infeasibility | 2462 | 18.63 | 0.0013 | 5969 |
+
+Paths were logged only for the Haswell runs and epyc3 prebuilt; the others are inferred from the node type, which the 100-iteration runs confirm for epyc4. Optimal runs met the 10⁻⁶ target.
+
+- **The CPU only mattered through the OpenBLAS path.** Forced to Haswell, epyc4 printed the same iteration lines as epyc3 for the whole run on both stacks (3175 and 2463 lines), and took 15–29% less solver time.
+- **Optimal doesn't mean the same solution:** 5.36 and 86.21 both pass Ipopt's test, and they are very different gaits by cost.
+- **The stack matters separately.** On the same path, source reached Optimal and prebuilt ended in local infeasibility. That's one run each on a sensitive problem. Source and prebuilt first differ at iteration 6.
+- **Thread count matters separately.** epyc3 at 1, 4 and 8 threads split at iterations 26–32, even though MA97 is designed to give the same answer at any thread count. The cause isn't known; CPU allocations also differed.
+
+### OpenBLAS paths and pivoting, first 100 iterations
+
+Source stack, MA97 on 4 threads, 100-iteration cap. The default and Haswell controls
+reproduced their long runs line for line. Iteration 1:
+
+| Run | Objective | `lg(mu)` | `lg(rg)` | Step | Ipopt s |
+|---|---|---|---|---|---|
+| epyc4, Prescott | 2.6694e6 | -5.2 | none | 18 | 285 |
+| epyc4, Sandybridge | 2.7253e6 | 1.3 | -4.0 | 291 | 281 |
+| epyc4, Haswell | 2.6236e6 | -0.2 | -4.0 | 24 | 212 |
+| epyc4, SkylakeX | 2.7546e6 | 2.8 | none | 9050 | 251 |
+| epyc4, Cooperlake (its default) | 2.7546e6 | 2.8 | none | 9050 | 228–230 |
+| epyc5 (9745), Cooperlake (its default) | 2.7546e6 | 2.8 | none | 9050 | 409 |
+| xeonsp4 (8468), SapphireRapids (its default) | 2.6510e6 | 0.3 | -4.0 | 41 | 221 |
+| epyc4, `ma97_u` 1e-4, either path | 2.6204e6 | -0.3 | none | 23 | 225, 236 |
+| epyc4, `ma97_u` 1e-2, either path | 2.6204e6 | -0.3 | none | 23 | 244, 249 |
+| epyc4, MUMPS, for comparison | 2.6204e6 | -0.3 | none | 23 | |
+
+- **It isn't specific to AVX-512.** Prescott, Sandybridge and Haswell differ from each other as much as from the AVX-512 paths. SkylakeX, Cooperlake and epyc4's and epyc5's defaults match for all 100 iterations.
+- **Tighter pivoting removes most of the sensitivity.** With `ma97_u` at 1e-4 or 1e-2 (default 1e-8), Cooperlake and Haswell match at iteration 1, and match epyc4 MUMPS's printed line. They first differ at iteration 45 and 59, instead of 1. At 1e-2 they were still about 1 part in a million apart at iteration 100.
+- **No sign of an AVX-512 bug,** but kernel accuracy wasn't measured directly.
+- **Cost over 100 iterations:** Ipopt time was within about 17% of the default, though these are single runs on different paths.
+
+Whether tighter pivoting improves convergence hasn't been tested: these runs stop at 100 iterations.
 
 ## Reproducing
 

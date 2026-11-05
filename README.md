@@ -8,6 +8,7 @@ directory, on **UQ's Bunya HPC** or a local Ubuntu workstation.
 - [Install on a local Ubuntu workstation](#install-on-a-local-ubuntu-workstation)
 - [How it works](#how-it-works)
 - [Benchmark findings](BENCHMARKS.md): what was measured, why single-threaded is as fast as multithreaded
+- [Reproducible results](BENCHMARKS.md#reproducible-results): how to get the same result on every run
 - [Bug fixes and tweaking](bug_fixes_%26_tweaking.md): how each bug and speed-up was found, and the exact fix
 
 ---
@@ -128,6 +129,14 @@ sbatch --export=ALL,PREDSIM_SCRIPT=myOtherMain ~/PredSim_BunyaInstallation/bunya
 
 For a quick test, set `S.solver.max_iter` to a few tens in `main.m` first.
 At the default 5000 iterations a run takes hours.
+
+**Results can change with the node type.** To keep them the same across node types:
+
+```bash
+sbatch --export=ALL,OPENBLAS_CORETYPE=Haswell,PREDSIM_CASADI_MODE=source ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
+```
+
+See [Reproducible results](BENCHMARKS.md#reproducible-results) for what else has to match.
 
 ### 6. Updating
 
