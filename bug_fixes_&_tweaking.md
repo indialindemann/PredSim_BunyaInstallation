@@ -39,6 +39,7 @@ covers how the problems were found and fixed.
 | [5.1](#51-the-install-check-passed-on-a-broken-stack) | Broken stack passed its check | Check only tested that it ran | Fail on BLAS errors |
 | [5.2](#52-timings-skewed-by-node-load) | Comparisons changed between runs | Busy shared nodes | Submit paired jobs together |
 | [5.7](#57-the-same-job-gives-different-results-by-cpu-type) | Same job, different result by CPU type | OpenBLAS picks its code path by CPU, and the first step is borderline | `OPENBLAS_CORETYPE`, or one CPU type |
+| [5.8](#58-the-first-factorisation-is-inaccurate-at-ipopts-default-pivot-threshold) | First step differs by machine; long runs fail or scatter | Ipopt's default MA97 pivot threshold (1e-8) is too loose for this matrix, by design a speed trade-off | `ma97_u=1e-2` with MC64 scaling, set by `run_predsim.sh` |
 
 ## Part 1: Compiler flags and speed
 
@@ -631,11 +632,9 @@ differently. With MA97, that changes the first iteration:
 | MA97, Haswell | -0.2 | -4.0 | 24 |
 | MUMPS and MA57 | about -0.3 | none | about 25 |
 
-The likely mechanism is an inference, not something traced. MA97's default pivot threshold
-is loose (`ma97_u` = 1e-8), so a rounding difference can flip the sign of a very small pivot. That
-changes the negative eigenvalue count, which Ipopt checks to decide whether to
-[regularise](https://github.com/coin-or/Ipopt/blob/stable/3.14/src/Algorithm/IpPDPerturbationHandler.cpp),
-and the adaptive barrier value is then chosen from that factorisation.
+The mechanism was traced later: at MA97's default pivot threshold the first factorisation of this
+matrix is inaccurate, so rounding decides the first step. See
+[5.8](#58-the-first-factorisation-is-inaccurate-at-ipopts-default-pivot-threshold).
 
 **How it was found.**
 1. The first guess was AVX-512, because epyc4 has it and epyc3 doesn't. It didn't hold: epyc4 reached
@@ -652,12 +651,22 @@ and the adaptive barrier value is then chosen from that factorisation.
    restoration iterations. That fits the borderline-pivot explanation but doesn't prove it. Paths still
    split at iteration 57 to 59, and objectives ranged from 5.36 to 27.66.
 
-**Is it a bug?** None has been shown. The results fit a borderline first step better than
-one faulty path, but OpenBLAS's accuracy wasn't measured directly.
+7. An overnight sweep of about 440 runs (5 to 6 Nov) traced the first factorisation, measured
+   OpenBLAS directly, hashed the inputs, and tested Ipopt settings one at a time
+   ([Ipopt settings](BENCHMARKS.md#ipopt-settings)).
+
+**Is it a bug?** No. Every OpenBLAS path gave errors of at most 12 rounding units on dgemm, dsyrk,
+dtrsm, dtrsv, dgemv, ddot, daxpy and dger against a plain reference, and the starting guess, bounds,
+objective, constraints, gradient and Jacobian hash identically across stacks and CPU allocations.
+The paths round differently, as they are allowed to, and three of Ipopt's default settings make
+these problems sensitive to that: the loose MA97 pivot threshold, the objective scaling (a factor of
+about 1e-5 here, which also lets Ipopt declare "Optimal" far too early), and the adaptive barrier
+parameter's jumps.
 
 **Other causes of different results.** Source and prebuilt split at iteration 6 on the same path:
 source reached Optimal and prebuilt ended in local infeasibility. epyc3 at 1, 4 and 8 threads split
-at iterations 26 to 32, though CPU allocations also differed. The muscle fit and `F_*.so` weren't the
+at iterations 26 to 32. That was repeated with the same 8 CPUs for every thread count and identical
+inputs, and they still split (at 26 to 31), so the thread count itself changes MA97's result. The muscle fit and `F_*.so` weren't the
 cause on Bunya, since they were byte-identical across the ten runs checked. The fit has no fixed
 random seed, though, and a Windows batch worker built a different one from desktop sessions, so
 copy those files instead of rebuilding them.
@@ -666,10 +675,106 @@ copy those files instead of rebuilding them.
 [reproducible results](BENCHMARKS.md#reproducible-results). `bunya/run_predsim.slurm` now sets
 `OPENBLAS_CORETYPE=Haswell` by default, so the path no longer follows the node type. That's for
 matching results, not speed, and `OPENBLAS_CORETYPE=auto` turns it off. `linux/write_rerun_slurm.sh` now also
-records `OPENBLAS_CORETYPE`, so a rerun keeps a forced path. This makes results repeat, but doesn't
-improve convergence. Tighter pivoting did improve it in four full-length runs on one problem, but
-results still depend on the path and stack, and one run reached a worse objective than at default.
-Results are in [what changes the result](BENCHMARKS.md#what-changes-the-result).
+records `OPENBLAS_CORETYPE`, so a rerun keeps a forced path. That makes results repeat, but doesn't
+improve convergence. Convergence came from changing the Ipopt settings: `linux/run_predsim.sh` now sets
+a default list (PredSim `linux/README.md`, "Ipopt options"), and with it every benchmark run converged.
+Tighter pivoting alone is not enough and not safe: it needed up to 48 GB and crashed MA97 once
+([Ipopt settings](BENCHMARKS.md#ipopt-settings)).
+
+### 5.8 The first factorisation is inaccurate at Ipopt's default pivot threshold
+
+**Symptom.** The same solve took a different first step on each OpenBLAS code path, CasADi build and
+thread count ([5.7](#57-the-same-job-gives-different-results-by-cpu-type)), and from there reached
+different results or none. Nothing reported an error.
+
+**Cause.** At iteration 0 Ipopt factorises a symmetric indefinite matrix with 402,110 rows. With
+MA97's pivot threshold at Ipopt's default (`ma97_u` = 1e-8), that factorisation is too inaccurate to
+use, and what Ipopt does next depends on how the rounding fell. From Ipopt's detailed log
+(`print_level 7`), same job, two code paths:
+
+| | Cooperlake | Haswell |
+|---|---|---|
+| Delayed pivots | 52,280 | 52,280 |
+| Negative eigenvalues counted (196,055 expected) | 196,055 | **196,056** |
+| What Ipopt did | Accepted it | Judged the inertia wrong, refactorised with regularisation 1e-4 |
+| Barrier parameter chosen from it | **585** | **0.65** |
+| Residual ratio of the next solve | 0.28, 0.094, 0.017, 0.017: refinement failed | 0.090, then 2.0e-4 |
+| Ipopt's fallback | Raised the threshold to 1e-6 and turned MA97's scaling on | None needed |
+
+So one path started the run with a barrier parameter 900 times larger than the other. Neither path
+is wrong: every OpenBLAS path is accurate to within 12 rounding units on the routines MA97 uses.
+The matrix is the problem. Its Jacobian entries span 1e-16 to 2 million, about 77,000 of them are
+rounding-level noise, and one row in seven had its pivot delayed.
+
+A second code confirms it. MATLAB's own sparse `ldl`, which shares nothing with MA97 or OpenBLAS,
+was given the same matrix at four thresholds:
+
+| Pivot threshold | Relative error of the solve |
+|---|---|
+| 1e-8 (Ipopt's default for MA97 and MA57) | 2.8 |
+| 1e-6 (where Ipopt's fallback stopped) | 1e-2 |
+| 1e-4 (the furthest Ipopt's fallback can go, `ma97_umax`) | 3e-6 |
+| 1e-2 (HSL's own default) | 6e-8 |
+
+An error of 2.8 means the answer is worse than no answer. The inertia was right every time, so
+this is a loss of accuracy, not a singular matrix.
+
+**Is it by design?** The loose threshold looks deliberate; the failure doesn't.
+
+- **The threshold is Ipopt's choice, not HSL's.** HSL's own default for MA97 and MA57 is 0.01. Ipopt
+  sets `ma97_u`, `ma57_pivtol` and `ma27_pivtol` to 1e-8, and `mumps_pivtol` to 1e-6.
+- **The trade is speed for accuracy.** A loose threshold lets the solver keep its planned pivot
+  order, which means fewer delayed pivots, less fill and less memory. Here 1e-2 cost 2.4 times the
+  delayed pivots, 21% more factor entries and 58% more floating-point work per factorisation.
+- **Ipopt has safety nets for when that goes wrong,** and all of them fired here. It checks the
+  inertia and regularises if it is wrong. It checks the residual after each solve and refines. If
+  refinement fails it asks the solver to "improve quality", which raises the threshold in steps
+  (from 1e-8 to 1e-6 here), never past `ma97_umax` (1e-4), and switches MA97's scaling on.
+- **The nets act after the damage and differ by path.** The barrier parameter had already been
+  chosen from the bad factorisation. One path got regularisation and the other got a higher
+  threshold, so the two runs were on different footings from iteration 0. The fallback also
+  stopped at 1e-6, where the solve error is still 1e-2.
+- **MA97's scaling is off at first for the same reason.** Ipopt's default (`ma97_scaling=dynamic`)
+  only turns it on after trouble; the log shows `Enabling scaling due to excess delays` during the
+  first factorisation.
+
+So these are defaults tuned for well-scaled problems, with fallbacks that usually cope. This problem
+is badly scaled enough that they don't. It isn't a bug in Ipopt, HSL or OpenBLAS, and no option was
+set wrongly by the install.
+
+**How it was found.**
+1. Short runs showed that `ma97_u` at 1e-4 or 1e-2 made the two paths agree at iteration 1
+   ([5.7](#57-the-same-job-gives-different-results-by-cpu-type), step 5). That pointed at pivoting
+   but didn't show why.
+2. Two-iteration runs with `print_level 7` and `ma97_print_level 2` printed MA97's statistics and
+   Ipopt's residual checks for each path. That gave the table above.
+3. A kernel test called eight BLAS routines on every OpenBLAS path and compared them with a plain
+   reference. All were accurate, which ruled out a faulty path.
+4. The Jacobian was saved from one run and the matrix rebuilt in MATLAB, to test a second
+   factorisation code.
+5. Hashes of the starting guess, bounds, objective, constraints, gradient and Jacobian matched
+   across both CasADi stacks, so the stacks differ inside the solve, not in the problem.
+
+**Fix.** `linux/run_predsim.sh` now sets these for every solve, with the other Ipopt options
+([Ipopt settings](BENCHMARKS.md#ipopt-settings)):
+
+- **`ma97_u=1e-2`, `ma97_umax=1e-1`:** HSL's own threshold. At iteration 0 both paths then count
+  the right inertia, the residual ratio is 1e-7 and 1e-14 after one refinement, and both choose
+  the same barrier parameter (0.52). Runs on different paths stay identical to about iteration 57
+  instead of splitting at iteration 1.
+- **`ma97_scaling=mc64`:** scaling from the first factorisation. Without it the first
+  factorisation at 1e-2 had 338,630 delayed pivots and 5.5 times the work, and whole runs needed 18
+  to 48 GB; six were killed for memory and one died with a segmentation fault inside `ma97_factor`.
+  With it, runs stayed under 10 GB.
+
+**What this fix doesn't do.**
+- **It isn't enough to converge.** With only these two options the current `main.m` problem still
+  failed on all runs. The objective scaling and the barrier parameter also had to change.
+- **It doesn't make results bit-identical.** Paths still split later, so the OpenBLAS path, stack
+  and thread count stay pinned ([reproducible results](BENCHMARKS.md#reproducible-results)).
+- **It is specific to MA97.** MA57 at its own 1e-8 default was less affected on this matrix
+  (residual ratio 1.6e-4, barrier parameter 0.49), and tightening it to 1e-2 made it about ten
+  times slower, so MA57 is left at Ipopt's default.
 
 ## Reference: settings used
 
@@ -738,10 +843,9 @@ scontrol show node <node> | grep ActiveFeatures
 - **`znver4`'s slower iterations:** Ipopt's own time was higher (2.68 against 2.29 s) on the same trajectory. Not investigated.
 - **CPU-tuned stacks:** re-measured on long runs. The gain is small (about 3% in the one clean comparison), but no tuned run reached a solution.
 - **Source vs prebuilt on epyc3 with HSL:** the selector's choice was measured with MUMPS only.
-- **Time to a solution:** all 18 long runs on `main.m`'s real problem failed to find a solution, whichever solver or stack they used. The cause isn't established, and rankings by time to a solution need a setup that solves. See [long runs](BENCHMARKS.md#long-runs-no-solution-found).
-- **HSL scaling options:** not tested yet.
-- **Tighter pivoting (`ma97_u`):** four of four runs reached Optimal on one speed and starting guess, but at different objectives. Not yet repeated, or run on epyc3 or the current `main.m` problem. Not a default.
+- **Time to a solution on the default settings:** the settings sweep ran on crowded nodes, so its times are about twice a quiet node's. Clean timings of the default list haven't been taken.
 - **`Issue when reconstructing optimal cost wrt stats`:** printed by every run on the `239530b` problem. The difference is 999 times the objective, which fits `OCP_formulation.m` dividing the objective by 1000 while the check doesn't. It only prints a message, and the solve isn't affected.
-- **MA97 and thread count:** MA97 is designed to give the same answer at any thread count, but runs split at iterations 26 to 32. The cause isn't known.
-- **OpenBLAS accuracy on each path:** not measured directly ([5.7](#57-the-same-job-gives-different-results-by-cpu-type)).
+- **MA97 and thread count:** MA97 is designed to give the same answer at any thread count, but runs with identical inputs and CPUs split at iterations 26 to 31. The mechanism inside MA97 wasn't isolated. With the default Ipopt list, 1 and 4 threads ended at the same objective.
+- **MA97 crash:** one run with tighter pivoting and no MC64 scaling died with a segmentation fault inside `ma97_factor` (OpenMP task) near convergence; six like it were killed for memory at 48 GB. Not seen with MC64 scaling. Not reported upstream.
+- **Windows:** the Ipopt settings haven't been tried on FRANKIE2 or PREDSIM4.
 - **Possible upstream reports:** suggesting `RTLD_DEEPBIND` to Ipopt, and MATLAB's unrenamed `METIS_SetDefaultOptions` to MathWorks. Not filed.

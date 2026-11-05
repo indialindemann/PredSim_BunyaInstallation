@@ -13,14 +13,15 @@ How each bug behind these results was found and fixed is in
 | Biggest single speed-up? | Compiling the model's external function with optimisation: **1.8× faster** (8.4 → 4.7 s per iteration). Now the default. |
 | CPU-specific flags for it? | `-march=znver3` (FMA, AVX2) makes each call 28% faster on epyc3 and epyc4, about 12% per iteration. Now the Bunya default. `-march=znver4` (AVX-512) is no better. See [section 1b](#1b-cpu-flags-for-the-external-function--marchznver3). |
 | Why could Windows be faster on the same hardware? | Mostly that: opensimAD_linux compiled it at `-O0`, Windows at `/O2`. Windows may also use HSL MA97 instead of MUMPS (see [HSL](#hsl-ma97-and-ma57)). |
-| HSL instead of MUMPS? | Unsettled. Over 80 iterations MA57 was 20–38% faster per iteration, but that didn't hold on longer runs, where MA97 on 4 threads did best. The long runs on the current problem didn't reach a solution; on the problem from `239530b` results depend heavily on small numerical differences, so one run can't rank solvers. See [HSL](#hsl-ma97-and-ma57), [long runs](#long-runs-no-solution-found) and [what changes the result](#what-changes-the-result). |
+| HSL instead of MUMPS? | MA97, with the Ipopt settings below. Over 80 iterations MA57 was 20–38% faster per iteration, but that didn't hold on longer runs, where MA97 on 4 threads had the lowest solver time. With Ipopt's defaults no solver converged on these problems; with the default settings MA97 and MA57 both did, at the same objective. See [HSL](#hsl-ma97-and-ma57) and [Ipopt settings](#ipopt-settings). |
 | CPU-tuned CasADi? | Small gain: about 3% overall in the one clean comparison. See [long runs](#long-runs-no-solution-found). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
 | Prebuilt or source CasADi? | Bunya: both are installed, and jobs use source on every node type so results don't follow the node. That isn't the fastest choice everywhere: with MUMPS, prebuilt was 7% faster on epyc4 and source 16% faster on epyc3 (`PREDSIM_CASADI_MODE=fastest` picks per node). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). **Prebuilt did worse on optimality at MA97's default pivoting:** none of its runs reached a solution, while most source runs on the same problem did. With tighter pivoting, both stacks reached one on both paths. See [prebuilt vs source](#prebuilt-vs-source-optimality). |
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
-| Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first step is very sensitive to that. Every path tested differs, not only AVX-512. See [what changes the result](#what-changes-the-result). |
+| Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first factorisation is inaccurate, so rounding decides the first step. Every path tested differs, not only AVX-512, and no path is faulty. See [what changes the result](#what-changes-the-result) and [Ipopt settings](#ipopt-settings). |
+| Why didn't the long runs converge? | Three Ipopt defaults don't suit these problems: MA97's pivot threshold, the objective scaling, and the adaptive barrier parameter's jumps. `linux/run_predsim.sh` now changes them by default, and every benchmark run with the new settings converged. See [Ipopt settings](#ipopt-settings). |
 | How do I get the same result every time? | Bunya jobs now fix the OpenBLAS path to Haswell by default. Keep the stack, solver and threads the same as well. See [reproducible results](#reproducible-results). |
 
 ## Reproducible results
@@ -60,10 +61,11 @@ repeat those.
 - Compare the runs' exit message, iteration count and objective, which should match to every printed digit.
 
 **Limits:**
-- **Tested with:** MA97 on 4 threads. epyc4 forced to Haswell matched epyc3 on its default path for whole runs, on both stacks. Forcing Haswell on epyc3 or epyc5, and forcing it with MA57 or MUMPS, weren't tested.
+- **Tested with:** MA97 on 4 threads: epyc4 forced to Haswell matched epyc3 on its default path for whole runs, on both stacks. Over 150 iterations, epyc3, epyc4 and epyc5 forced to Haswell printed identical lines with MA97 (default and tighter pivoting), MA57 and MUMPS.
 - **OpenMP MUMPS:** `--mumps-openmp` builds don't repeat, so don't use them when results must match.
 - **Rerun scripts:** they keep the CPU type, stack, threads and `OPENBLAS_CORETYPE`. Older rerun scripts don't record `OPENBLAS_CORETYPE`, so add it to those by hand.
-- **Convergence:** these settings make a result repeat, not converge. A run that fails will fail the same way.
+- **Thread count:** MA97 at 1, 2, 4 and 8 threads gives different results from identical inputs, so keep `OMP_NUM_THREADS` the same.
+- **Convergence:** these settings make a result repeat, not converge. Convergence comes from the Ipopt options that `linux/run_predsim.sh` sets ([Ipopt settings](#ipopt-settings)).
 
 ### On Windows
 
@@ -455,8 +457,9 @@ ended at `Converged to a point of local infeasibility` or at the cap, still in
 restoration. The final violation was 0.002–0.8, against a target of 10⁻⁶.
 
 This happens with every solver and stack, which points to the problem setup rather
-than the install. The cause hasn't been established. Suspects are the new touchdown
-bounds, `main.m`'s relaxed tolerances being commented out, and the starting guess.
+than the install. **The cause was found later: Ipopt's default settings.** With the
+settings in [Ipopt settings](#ipopt-settings) the same problem converges. The
+timings below are still useful for comparing solver time per iteration.
 
 ### By solver
 
@@ -569,7 +572,7 @@ reproduced their long runs line for line. Iteration 1:
 
 - **It isn't specific to AVX-512.** Prescott, Sandybridge and Haswell differ from each other as much as from the AVX-512 paths. SkylakeX, Cooperlake and epyc4's and epyc5's defaults match for all 100 iterations.
 - **Tighter pivoting removes most of the early sensitivity.** With `ma97_u` at 1e-4 or 1e-2 (default 1e-8), Cooperlake and Haswell match at iteration 1, and match epyc4 MUMPS's printed line. They first differ at iteration 45 and 59, instead of 1. At 1e-2 they were still about 1 part in a million apart at iteration 100.
-- **No sign of an AVX-512 bug,** but kernel accuracy wasn't measured directly.
+- **No sign of an AVX-512 bug.** Kernel accuracy was measured later and every path is accurate ([Ipopt settings](#ipopt-settings)).
 - **Cost over 100 iterations:** Ipopt time was within about 17% of the default, though these are single runs on different paths.
 
 ### Tighter pivoting, full-length runs
@@ -594,7 +597,231 @@ default is 1e-8 and 1e-4. Each row is one run. Restoration counts iterations mar
 - **Two routes reached the same gait.** Prebuilt Cooperlake with tighter pivoting (5.361) and source Haswell at default (5.358) differ by 0.15° RMS across joint angles. 5.36 is the lowest objective seen on this problem, but that doesn't prove it's the global optimum.
 - **The higher objectives mostly differ in the arms and actuator cost.** Compared with the 5.36 gait, hip, knee and ankle angles differ by 1.0° RMS for 5.64, 3.1° for 27.66 and 7.4° for 24.54, while arm coordinates differ by up to 61°. The actuator excitation term is 1290 at 5.36, 1544 at 5.64, 18448 at 24.54 and 21945 at 27.66.
 
-**Limits:** one speed (9.2) and one starting guess on the `239530b` problem. These settings haven't been repeated, or run on epyc3 or on the current `main.m` problem, where no long run has found a solution.
+**Later runs changed this picture** ([Ipopt settings](#ipopt-settings)): the exits at 24 to 86 were early stops, tighter pivoting alone needs up to 48 GB and doesn't help the current `main.m` problem, and 5.36 is the same gait as the 5.33 that the default settings now reach.
+
+## Ipopt settings
+
+**Short answer.** The failed and scattered long runs above were not caused by a broken
+install or a faulty maths library. Three of Ipopt's default settings don't suit these
+problems. With them changed, the runs converge. `linux/run_predsim.sh` now applies the
+changed settings by default (PredSim `d2147e4`):
+
+```
+ma97_u=1e-2;ma97_umax=1e-1;ma97_scaling=mc64;nlp_scaling_method=none;obj_scaling_factor=1e-3;mu_max=1;dual_inf_tol=1e-3
+```
+
+Set `PREDSIM_IPOPT_OPTIONS=none` to get Ipopt's own defaults back, or give your own list
+(PredSim `linux/README.md`, "Ipopt options").
+
+**Method.** 5 to 6 Nov 2026, about 520 jobs. Two problems, both
+`Falisse_et_al_2022_lightfoot_alpha0dot5` at 9.2 m/s from `OCP/motion_saved.mot`:
+
+- **Half cycle:** `main.m` and `OCP_formulation.m` from PredSim `239530b`, as in
+  [what changes the result](#what-changes-the-result).
+- **Full cycle:** the current `main.m`, as in [the long runs](#long-runs-no-solution-found).
+
+Unless stated, runs used MA97 on 4 threads and 4 CPUs on epyc3 nodes. Repeats of a setting
+differ in the OpenBLAS code path (Haswell, Sandybridge, Nehalem, Prescott) and the CasADi
+stack. Those are the things that changed the outcome before, so here they act as random
+seeds. Runs had an Ipopt wall limit of 1.7 to 5 hours, and "Optimal" means Ipopt's
+`Optimal Solution Found` with the constraint violation below 10⁻⁶. Objectives are unscaled.
+Many runs shared each node, so times are about twice those of a quiet node.
+
+### What goes wrong with Ipopt's defaults
+
+**1. The first factorisation is inaccurate.** MA97's default pivot threshold (`ma97_u`)
+is 10⁻⁸. The first matrix has 402,110 rows, 52,000 to 59,000 delayed pivots, and Jacobian
+entries from 10⁻¹⁶ to 2 million. Ipopt's detailed log (`print_level 7`) at iteration 0:
+
+| Setting, code path | What MA97 returned | Barrier parameter chosen |
+|---|---|---|
+| Default, Cooperlake | Refinement fails (residual ratios 0.28, 0.094, 0.017); Ipopt raises the threshold itself | 585 |
+| Default, Haswell | One negative eigenvalue too many (196,056 against 196,055); Ipopt adds regularisation | 0.65 |
+| `ma97_u` 10⁻², either path | Right inertia, residual ratio 10⁻⁸ to 10⁻⁷ | 0.52 |
+| MA57, default | Residual ratio 1.6·10⁻⁴ | 0.49 |
+
+So at the default threshold the first step depends on rounding, and the two code paths
+start the run with barrier parameters 900 times apart. MATLAB's own sparse factorisation,
+which shares no code with MA97 or OpenBLAS, shows the same thing on the same matrix: a
+relative solve error of 2.8 at a threshold of 10⁻⁸, 10⁻² at 10⁻⁶, 3·10⁻⁶ at 10⁻⁴ and
+6·10⁻⁸ at 10⁻². Why Ipopt's threshold is that loose, and what its fallbacks did, is in
+[bug fixes 5.8](bug_fixes_%26_tweaking.md#58-the-first-factorisation-is-inaccurate-at-ipopts-default-pivot-threshold).
+
+**2. The objective is scaled by about 10⁻⁵.** Ipopt's default scaling divides the
+objective by its largest gradient entry at the starting guess. The guess is far from a
+solution (objective 2.8 million, against about 5 at the optimum), so the factor is
+7.3·10⁻⁶ on the half-cycle problem and 1.0·10⁻⁵ on the full-cycle one. Ipopt's
+convergence test works on the scaled problem, so `tol` 10⁻⁴ is in effect about 10
+unscaled. Runs passed it within 4 to 7 iterations of first becoming feasible, with an
+unscaled optimality error (dual infeasibility) of 0.008 to 0.5. Rerun with only that
+limit tightened (`dual_inf_tol` 10⁻³), three such runs replayed their paths exactly,
+passed their old exit and carried on: 27.66 became 7.43, 86.21 became 5.64, and 24.54
+reached 5.36. The "Optimal" results between 24 and 86 in the earlier tables were early
+stops, not separate solutions.
+
+**3. The adaptive barrier parameter jumps.** With `mu_strategy=adaptive` the barrier
+parameter moved between 10⁻⁵ and 10³ to 10⁴ from one iteration to the next. On the
+full-cycle problem the dual infeasibility then grew to 10⁹ to 10¹⁰, steps shrank to 10⁻⁴
+of a full step, and every run went into restoration near iteration 400 and stayed near a
+violation of 2,600. Capping the parameter (`mu_max=1`) or using the monotone strategy
+removed the restoration phase completely on that problem.
+
+**What it isn't:**
+
+- **Not an OpenBLAS bug.** Every code path (Prescott, Core2, Nehalem, Sandybridge,
+  Haswell, Zen, SkylakeX, Cooperlake) gave errors of at most 12 rounding units on dgemm,
+  dsyrk, dtrsm, dtrsv, dgemv, ddot, daxpy and dger against a plain reference, sizes 1 to
+  500. Haswell and Zen are bit-identical, as are SkylakeX and Cooperlake.
+- **Not the inputs.** The starting guess, bounds, objective, constraints, gradient and
+  Jacobian at the start hash identically across both CasADi stacks and across 4 and 8
+  CPUs. The stacks differ inside Ipopt and the linear algebra, not in the problem.
+- **Thread count does change MA97's result.** With the same 8 CPUs and identical
+  inputs, MA97 at 1, 2, 4 and 8 threads split at iteration 26 to 31 (default threshold)
+  or 59 to 73 (`ma97_u` 10⁻²). The mechanism inside MA97 wasn't isolated.
+
+### Results by setting
+
+"Tighter" means `ma97_u=1e-2;ma97_umax=1e-1`. Every row also has `dual_inf_tol=1e-3`.
+"Scaling off" means `nlp_scaling_method=none`; "objective factor" is `obj_scaling_factor`
+on top of that. Counts are runs that reached Optimal out of runs made; a run that didn't
+either failed or hit its wall limit. Iterations and objectives are for the Optimal runs.
+
+| Setting | Half cycle: Optimal | Iterations; objective | Full cycle: Optimal | Iterations; objective | Peak memory, GB |
+|---|---|---|---|---|---|
+| Ipopt defaults, MA97 | 0 of 6 |  | 0 of 4 |  | 13 |
+| Ipopt defaults, MA57 | 0 of 8 |  | 0 of 2 |  | 24 |
+| Ipopt defaults, MUMPS | 0 of 5 |  | 0 of 2 |  | 10 |
+| Tighter | 13 of 15 | 883 to 2911; 5.36 to 7.43 | 0 of 6 |  | 48 |
+| Tighter + MC64 | 5 of 6 | 779 to 1906; 5.36 to 7.43 | 0 of 4 |  | 10 |
+| Tighter + monotone barrier | 0 of 8 |  | 4 of 4 | 1046 to 3809; 6.06 to 6.10 | 28 |
+| Tighter + MC64 + `mu_max=1` | 0 of 6 |  | 6 of 6 | 448 to 622; 5.81 to 5.83 | 10 |
+| Tighter + scaling off | 7 of 7 | 1361 to 1642; 5.59 | 9 of 9 | 790 to 1086; 6.75 to 6.83 | 12 |
+| Tighter + MC64 + scaling off | 8 of 8 | 1330 to 1654; 5.59 | 8 of 8 | 772 to 936; 6.77 to 6.83 | 10 |
+| Tighter + MC64 + scaling off + `mu_max=1` (first default, `04839db`) | 8 of 8 | 809 to 908; 5.33 | 6 of 8 | 1058 to 1940; 5.83 to 5.84 | 10 |
+| The same without MC64 | 8 of 8 | 791 to 1506; 5.33 | 8 of 8 | 1075 to 1606; 5.83 to 5.84 | 25 |
+| The same + objective factor 1e-5 | 3 of 4 | 589 to 909; 5.35 | 4 of 4 | 533 to 634; 5.80 to 5.81 | 10 |
+| The same + objective factor 1e-4 | 7 of 7 | 530 to 611; 5.33 | 6 of 7 | 614 to 1032; 5.76 to 5.79 | 10 |
+| **The same + objective factor 1e-3 (default, `d2147e4`)** | 7 of 7 | 529 to 679; 5.33 | 6 of 7 | 637 to 926; 5.78 to 5.81 | 10 |
+
+- **Ipopt's defaults never converged,** with any linear solver, on either problem.
+- **Tighter pivoting alone works on the half-cycle problem but is not safe.** It needed
+  18 to 48 GB, and at 1.33 and 5 m/s 7 of 8 runs died near the end, 6 killed for memory
+  at 48 GB and one with a segmentation fault inside `ma97_factor`. It didn't help the
+  full-cycle problem at all.
+- **MC64 scaling fixes the memory:** under 10 GB with the same thresholds.
+- **Scaling off makes every run converge, on both problems,** but slowly, and on the
+  full-cycle problem to a costlier gait (6.75 to 6.83).
+- **`mu_max=1` then makes the result repeat.** On the half-cycle problem every such run
+  ended at 5.328 to 5.331, the lowest objective seen on that problem, whichever stack,
+  code path, thread count or node type it used. MA57 with the same list ended at 5.329
+  and 5.332. On the full-cycle problem every finished run ended at 5.83 to 5.84, but took 1,060
+  to more than 2,500 iterations and gave a left-right asymmetric gait (see below).
+- **A fixed objective factor is faster and avoids that gait.** With `obj_scaling_factor`
+  1e-3 the half-cycle problem took 529 to 679 iterations instead of 809 to 908, at the
+  same 5.33. The full-cycle problem took 637 to 926 and ended at 5.78 to 5.81; the one
+  run that didn't finish was at 5.79 when it hit a 2-hour limit on a slow node. Factor
+  1e-5 was the fastest on the full-cycle problem (533 to 634 iterations) but one of four
+  half-cycle runs
+  stalled. Factor 1e-4 matched 1e-3 on the half-cycle problem and took 614 to 1,032
+  iterations on the full-cycle one, some of them with restoration.
+- **With Ipopt's scaling left on, `mu_max=1` is fast on the full-cycle problem**
+  (448 to 622 iterations) but stuck in restoration on all six half-cycle runs.
+
+**No help, or worse:** monotone barrier on the half-cycle problem (0 of 8), `mu_oracle`
+`loqo`, L-BFGS history 20 or 50, SR1 updates, `expect_infeasible_problem`,
+`recalc_y`, `adaptive_mu_globalization=kkt-error`, other L-BFGS start values,
+`nlp_scaling_max_gradient` 1e4, `mu_max` 10, `ma97_scaling=none` (4 of 4 killed for
+memory at 32 GB), and MA57 with `ma57_pivtol` 1e-2 (about 40 s per iteration). `tol`
+1e-3 was no faster. `mu_max=1` with `bound_push` 0.1 and scaling off was worse than
+either alone.
+
+### Validation through the job script
+
+The full-cycle problem, submitted with `bunya/run_predsim.slurm` and nothing but resource
+flags: 2 CPUs, 1 thread, 16 GB, Haswell path and source stack unless stated. Only the
+first speed of `main.m`'s loop (9.2 m/s) counts.
+
+| Settings | Node | Exit | Iterations | Objective | Minutes | Peak GB |
+|---|---|---|---|---|---|---|
+| Default list (`d2147e4`) | epyc4 | Still running: objective 5.84 at iteration 409 | | | |  |
+| | epyc3 | Still running: objective 14.69 at iteration 241 | | | |  |
+| | epyc4 (no node flags) | Still running: objective 5.84 at iteration 408 | | | |  |
+| | epyc5 | Still running: objective 13.32 at iteration 250 | | | |  |
+| | epyc4, prebuilt stack | Still running: objective 5.89 at iteration 406 | | | |  |
+| The same list passed as `PREDSIM_IPOPT_OPTIONS` on `04839db` | epyc4 | Optimal | 926 | 5.794 | 55 | 9.6 |
+| | epyc3 | Optimal | 926 | 5.794 | 76 | 9.7 |
+| First default (`04839db`) | epyc4, `OPENBLAS_CORETYPE=auto` | Optimal | 1161 | 5.832 | 71 | 9.5 |
+| | epyc3, prebuilt stack | Optimal | 1318 | 5.840 | 99 | 9.6 |
+| | epyc3, 4 CPUs and 4 threads | Optimal | 1845 | 5.840 | 121 | 9.7 |
+| | epyc4, 4 CPUs and 4 threads | Optimal | 1845 | 5.840 | 123 | 9.9 |
+| | epyc3, epyc4 (two runs), epyc5 | Still running at 5.82 after 1,840 to 2,960 iterations | | | | |
+| Ipopt defaults (`PREDSIM_IPOPT_OPTIONS=none`) | epyc3 | Still running: objective 124, violation 0.7, 910 restoration iterations after 2,929 | | | | |
+
+- **The node type no longer matters.** epyc3 and epyc4 printed the same iteration count and
+  objective with the default list, and the benchmark run with the same settings matched them.
+- **The first default converged but slowly:** four runs took 71 to 123 minutes and four were
+  still polishing after more than 1,800 iterations.
+- **Ipopt's defaults fail through the same path,** so the difference is the settings.
+
+### Other speeds
+
+One starting guess, both problems, 2 runs each, MA97 on 4 threads. Each cell gives the runs
+that reached Optimal, their iteration counts and their objectives.
+
+| Problem, speed | Ipopt defaults | First default (`04839db`) | Default (`d2147e4`) |
+|---|---|---|---|
+| Half cycle, 1.33 m/s | 2 of 2; 382, 1099; 0.292, 0.382 | 2 of 2; 2203, 2324; 0.174 | 0 of 2 (2 running) |
+| Half cycle, 5 m/s | 2 of 2; 1373, 1870; 0.541, 2.177 | 2 of 2; 1133, 1308; 0.500, 0.501 | 2 of 2; 736, 986; 0.501 |
+| Full cycle, 1.33 m/s | 2 of 2; 335, 531; 0.264 | 2 of 2; 1363, 1772; 0.179, 0.224 | 0 of 2 (2 running) |
+| Full cycle, 5 m/s | 2 of 2; 73, 1001; 0.542, 57.734 | 1 of 2; 1893; 0.510 | 0 of 2 (2 running) |
+
+- **Ipopt's defaults stop early here too.** Their "Optimal" exits had an unscaled
+  optimality error of 0.0002 to 0.35. One 5 m/s run stopped at iteration 73 with an
+  objective of 57.7, where the others reached 0.54.
+- **Tighter pivoting alone:** 7 of 8 died, as above.
+
+### The solutions are different gaits
+
+The runs end at a handful of objectives, and they are different gaits, not one gait
+reached to different accuracy. One exception: 5.36 in the earlier tables is the same
+gait as 5.33 (0.6 degrees RMS apart), stopped slightly early.
+
+| Problem | Objective | Gait |
+|---|---|---|
+| Half cycle | 5.33 (and 5.36) | Lowest seen. MA57 and MA97 give the identical motion |
+| Half cycle | 5.59, 5.64 | Legs within 1.5 degrees RMS of the 5.33 gait; arms differ by about 21 degrees RMS |
+| Half cycle | 7.43 | Legs within 2.1 degrees RMS; arms differ by 35 degrees RMS |
+| Full cycle | 5.80 to 5.83 | Symmetric: both knees flex to 78 to 80 degrees in swing, both arms swing to 15 to 17 degrees |
+| Full cycle | 5.76 to 5.79 | Slightly asymmetric: knees 81 to 88 and 77 to 78 degrees, arms as above |
+| Full cycle | 5.83 to 5.84 | Asymmetric: knees 110 and 76 degrees, arms 50 and 10 degrees |
+| Full cycle | 5.91 to 6.10 | Knees within 6 degrees of each other; arms or trunk differ |
+| Full cycle | 6.75 to 6.83 | Asymmetric: knees 111 and 62 degrees, both arms to 50 degrees |
+
+The full-cycle problem doesn't force left and right to match, so it has asymmetric
+optima at almost the same cost as the symmetric one, and one slightly below it. Which
+a run reaches depends on its early path, and that depends on the settings: scaling off
+with no objective factor gave one of the two strongly asymmetric gaits in every one of
+49 runs. The default list gave 5.808 (knees 79 and 78 degrees) in two runs and 5.78 to
+5.79 (knees 84 to 85 and 77 to 78) in four. Nothing here shows which is the global
+optimum, so check the gait, not only the exit message.
+
+### Limits
+
+- **One subject, one starting guess.** Speeds other than 9.2 m/s had 2 runs per setting.
+- **Loaded nodes.** Times are from nodes shared with up to 200 of these jobs, so they
+  rank settings by iterations more reliably than by minutes.
+- **The full-cycle problem has a long tail.** Its objective is within 0.1% of final a
+  few hundred iterations before Ipopt stops. Ipopt's "acceptable" stopping rule was
+  replayed on the logs and would not have triggered, so it isn't a fix.
+- **The objective factor is fixed, not derived.** 1e-3 suits objectives of order 1 to
+  10 at the solution. Three values were tried, on one subject.
+- **The default was chosen late.** It has fewer runs behind it than the settings it
+  replaced, and its other-speed runs were still going when this was written.
+- **Windows wasn't tested.** The same options can be set in `main.m` (PredSim
+  `linux/README.md`).
+- **Result files:** `/scratch/user/<user>/predsim-night/` on Bunya holds every run
+  (`runs/<tag>/`, `specs-*.txt` for the settings, `summ.sh` for a one-line summary).
+  Scratch is cleared after a period of no use.
 
 ## Reproducing
 

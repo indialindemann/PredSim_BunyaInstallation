@@ -46,6 +46,10 @@
 #                    speed: prebuilt was about 7% faster on epyc4 with MUMPS.
 #   OPENBLAS_CORETYPE    OpenBLAS code path (default: Haswell on every node type;
 #                    "auto" lets OpenBLAS pick by CPU). See the note in the code below.
+#   PREDSIM_IPOPT_OPTIONS  Ipopt options as "name=value;name=value" (default: the
+#                    list set in PredSim's linux/run_predsim.sh; "none" gives
+#                    Ipopt's own defaults, which did not converge on the 3D
+#                    sprinting problems).
 #
 # MATLAB output: ~/PredSim/logs/<script>-<timestamp>.log (and this job's .out).
 # Results: ~/PredSimResults/<subject>/
@@ -79,9 +83,12 @@ echo "== env: $PREDSIM_ENV -> $(readlink -f "$PREDSIM_ENV")"
 # The CasADi stack is fixed for the same reason: ~/.predsim/env.sh uses the
 # source stack on every node type unless PREDSIM_CASADI_MODE says otherwise.
 #
-# Provisional default: tested with MA97 on 4 threads, epyc4 forced to Haswell
-# against epyc3. Revisit it if later runs show a better choice
-# (BENCHMARKS.md, "Reproducible results").
+# Tested: forced to Haswell, epyc3, epyc4 and epyc5 print identical iteration
+# lines with MA97, MA57 and MUMPS (BENCHMARKS.md, "Reproducible results").
+#
+# Convergence is a separate matter: linux/run_predsim.sh in the PredSim checkout
+# sets the Ipopt options that make these problems converge (PREDSIM_IPOPT_OPTIONS;
+# BENCHMARKS.md, "Ipopt settings").
 case "${OPENBLAS_CORETYPE:-Haswell}" in
     auto|Auto|AUTO) unset OPENBLAS_CORETYPE ;;
     *) export OPENBLAS_CORETYPE="${OPENBLAS_CORETYPE:-Haswell}" ;;

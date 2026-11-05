@@ -136,7 +136,7 @@ result doesn't depend on which node type the job lands on:
 
 - **Why:** OpenBLAS normally picks its code path from the CPU. The paths round differently, and that was enough to change PredSim's result and whether it converged.
 - **To turn it off:** pass `auto`, and OpenBLAS picks by CPU again. Any other OpenBLAS path name also works.
-- **Status:** provisional. It was tested with MA97 on 4 threads, and may change if later runs show a better default.
+- **Tested:** forced to Haswell, epyc3, epyc4 and epyc5 print identical iteration lines with MA97, MA57 and MUMPS.
 
 ```bash
 sbatch --export=ALL,OPENBLAS_CORETYPE=auto ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
@@ -151,6 +151,21 @@ sbatch --export=ALL,PREDSIM_CASADI_MODE=fastest ~/PredSim_BunyaInstallation/buny
 ```
 
 See [Reproducible results](BENCHMARKS.md#reproducible-results) for what else has to match.
+
+**Jobs also change Ipopt's settings, so the solve converges.** With Ipopt's own defaults
+the 3D sprinting problems didn't converge on Bunya with any linear solver, and some runs
+stopped as "Optimal" at points that weren't optima. PredSim's `linux/run_predsim.sh` now
+adds this list to every solve:
+
+```
+ma97_u=1e-2;ma97_umax=1e-1;ma97_scaling=mc64;nlp_scaling_method=none;obj_scaling_factor=1e-3;mu_max=1;dual_inf_tol=1e-3
+```
+
+- **What it changes:** stricter pivoting and MC64 scaling in MA97, a fixed objective scaling factor instead of Ipopt's automatic scaling, a cap on the barrier parameter, and a stricter test before "Optimal".
+- **`main.m` wins:** anything set in `S.solver.ipopt_options` is kept.
+- **To turn it off:** `--export=ALL,PREDSIM_IPOPT_OPTIONS=none` gives Ipopt's defaults. The same variable takes your own `name=value;name=value` list.
+- **Memory:** runs with this list peaked under 10 GB, so the 16 GB default still fits.
+- **Check the gait:** these problems have several local optima, some of them left-right asymmetric. See [Ipopt settings](BENCHMARKS.md#ipopt-settings).
 
 ### 6. Updating
 
@@ -281,7 +296,8 @@ Everything is installed under `~/predsim-deps/`:
   CasADi, Ipopt/MUMPS (source mode), opensimAD, the Python venv and `env.sh`.
 
 `~/.predsim/env.sh` points at the default stack (with `--casadi both`, it
-is a selector that sources one stack per CPU type). To remove a stack,
+is a selector: on Bunya it sources the source stack on every node type, or one
+stack per CPU type with `PREDSIM_CASADI_MODE=fastest`). To remove a stack,
 `rm -rf` its folder.
 
 Each step logs to `<stack>/logs/<step>.log` and records a hash of its inputs.
@@ -334,8 +350,9 @@ builds with `SWIG_IMPORT=ON`, so **neither mode needs SWIG**.
 
 The default is set per site from benchmark results: **source on the Ubuntu
 workstation** (about 10% faster, all in MUMPS) and **both on Bunya**
-(prebuilt is 7% faster on epyc4, source 16% faster on epyc3; each node uses
-its faster one). To compare stacks on fixed work, submit the jobs together:
+(prebuilt is 7% faster on epyc4, source 16% faster on epyc3; jobs use source
+on every node type so results don't follow the node, and
+`PREDSIM_CASADI_MODE=fastest` picks the faster one per node). To compare stacks on fixed work, submit the jobs together:
 
 ```bash
 PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackA>/env.sh --script linux/bench/bench_predsim
