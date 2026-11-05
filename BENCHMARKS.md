@@ -17,7 +17,7 @@ How each bug behind these results was found and fixed is in
 | CPU-tuned CasADi? | Small gain: about 3% overall in the one clean comparison. See [long runs](#long-runs-no-solution-found). |
 | Threads (`S.solver.N_threads`)? | No benefit. The current code is single-threaded, and with the fix it matches 16 threads at about a ninth of the fair-share charge. |
 | Multithreaded MUMPS? | Works after a fix, and 16 threads cut an iteration from 4.95 to 3.69 s. That costs about 6× the fair-share charge, and results change from run to run, so it isn't the default. See [Multithreaded MUMPS](#6-multithreaded-mumps). |
-| Prebuilt or source CasADi? | Bunya: both are installed and each node uses its faster one: prebuilt on epyc4 (7% faster), source on epyc3 (16% faster). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). **Prebuilt did worse on optimality at MA97's default pivoting:** none of its runs reached a solution, while most source runs on the same problem did. With tighter pivoting, both stacks reached one on both paths. See [prebuilt vs source](#prebuilt-vs-source-optimality). |
+| Prebuilt or source CasADi? | Bunya: both are installed, and jobs use source on every node type so results don't follow the node. That isn't the fastest choice everywhere: with MUMPS, prebuilt was 7% faster on epyc4 and source 16% faster on epyc3 (`PREDSIM_CASADI_MODE=fastest` picks per node). Source-mode builds there were broken until 3 Nov 2026 (see [section 6](#6-multithreaded-mumps)). Ubuntu workstation: source (about 10% faster). **Prebuilt did worse on optimality at MA97's default pivoting:** none of its runs reached a solution, while most source runs on the same problem did. With tighter pivoting, both stacks reached one on both paths. See [prebuilt vs source](#prebuilt-vs-source-optimality). |
 | Which Bunya CPU? | epyc4 is fastest. Jobs *prefer* it; one install runs on all types. |
 | How many CPUs per job? | 2 (one physical core). More gives no speed-up. |
 | Why do CPUs give different results? | MA97's OpenBLAS picks its code path by CPU, and at MA97's default pivot threshold the first step is very sensitive to that. Every path tested differs, not only AVX-512. See [what changes the result](#what-changes-the-result). |
@@ -30,16 +30,16 @@ To get the same result every time, keep all of these the same:
 | Keep the same | How |
 |---|---|
 | OpenBLAS code path | Option 1 or 2 below |
-| CasADi stack | Set `PREDSIM_CASADI_MODE` to `source` or `prebuilt`; otherwise the stack can change with the node type |
+| CasADi stack | The default is source on every node type. `PREDSIM_CASADI_MODE` changes it; `fastest` makes it follow the node type again |
 | Solver and threads | `PREDSIM_HSL_SOLVER`, `OMP_NUM_THREADS` and `--cpus-per-task` |
 | Code and inputs | The same commit, `main.m`, solver options and starting guess, and the same muscle fit and `F_*` files in `Subjects/<subject>` |
 
 **Option 1: force the OpenBLAS path.** `bunya/run_predsim.slurm` does this by default: it sets
-`OPENBLAS_CORETYPE=Haswell` on every node type. That's for matching results, not speed. Only the
-stack is left to fix:
+`OPENBLAS_CORETYPE=Haswell` on every node type. `~/.predsim/env.sh` also uses the source stack on
+every node type. Both are for matching results, not speed, so the default job already fixes them:
 
 ```bash
-sbatch --export=ALL,PREDSIM_CASADI_MODE=source bunya/run_predsim.slurm
+sbatch bunya/run_predsim.slurm
 ```
 
 Outside Slurm, run `export OPENBLAS_CORETYPE=Haswell` first. The CPU must support AVX2.
@@ -288,7 +288,7 @@ together (current code, `F` at `-O3`, 2 CPUs, 2 repeats, s / iteration):
 | epyc4 | **4.12** (4.24, 4.00) | 4.41 (4.02, 4.79) | 2.19 / 2.27 | prebuilt, 1.07× |
 | epyc3 | 5.34 (5.62, 5.05) | **4.59** (4.58, 4.59) | 2.89 / 2.11 | source, 1.16× |
 
-- **Bunya installs both by default:** `--prefer=epyc4` is only a preference, so many jobs run on epyc3, where source saves 14% of the time. `~/.predsim/env.sh` reads the node's CPU model at job start and sources the source stack on epyc3 and the prebuilt one elsewhere (`SITE_STACK_BY_ARCH` in `sites/bunya.env`). The cost is about 30 more minutes of install and a second check run. epyc5 keeps prebuilt until the fixed source build is measured there.
+- **Bunya installs both, and uses source by default:** since 5 Nov 2026 `~/.predsim/env.sh` sources the source stack on every node type, so results don't depend on where a job lands. Before that it used source on epyc3 and prebuilt elsewhere (`SITE_STACK_FASTEST_BY_ARCH` in `sites/bunya.env`), which `PREDSIM_CASADI_MODE=fastest` still does. `--prefer=epyc4` is only a preference, so many jobs run on epyc3, where source saves 14% of the time. epyc5 hasn't been measured with the fixed source build.
 - **The external function is shared:** `F_<subject>.so` links only libc/libm, so both stacks use the same compiled file.
 - **Contention matters:** an unpaired run of the source stack earlier, with fewer jobs on the node, gave 4.31 s against 4.95 s for prebuilt. Compare stacks with jobs submitted together.
 - **Source takes a different path on epyc3 and epyc4:** its OpenBLAS picks different kernels per CPU (`DYNAMIC_ARCH`), so the rounding differs. Prebuilt took the same path on both.

@@ -79,10 +79,10 @@ git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git ~/PredSim_
 This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; a fresh
 install takes about 2 hours). Nothing heavy runs on the login node. The job:
 
-1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`, twice: one stack with the official prebuilt CasADi and one built from source (see [Two CasADi stacks](#two-casadi-stacks-one-per-node-type)),
+1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`, twice: one stack with the official prebuilt CasADi and one built from source (see [Two CasADi stacks](#two-casadi-stacks-source-by-default)),
 2. builds CoinHSL into each stack (unless you passed `--no-hsl`),
 3. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
-4. writes `~/.predsim/env.sh`, the one file a simulation needs; it picks the faster stack on whichever node a job lands on,
+4. writes `~/.predsim/env.sh`, the one file a simulation needs; it uses the source stack on every node type, so results don't depend on where a job lands,
 5. runs a check on each stack that finishes with a short PredSim simulation.
 
 If your default Slurm account isn't the one to charge, add `--account=a_xxxx` after `sbatch`.
@@ -142,11 +142,12 @@ result doesn't depend on which node type the job lands on:
 sbatch --export=ALL,OPENBLAS_CORETYPE=auto ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
 ```
 
-**The CasADi stack still changes with the node type,** and that changes results too. To
-keep results the same across node types, fix the stack as well:
+**Jobs also use the same CasADi stack on every node type: source.** This isn't for speed
+either. The two stacks take different paths through the same solve, so a per-node choice made
+results depend on the node type. To get the faster stack for each node type instead:
 
 ```bash
-sbatch --export=ALL,PREDSIM_CASADI_MODE=source ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
+sbatch --export=ALL,PREDSIM_CASADI_MODE=fastest ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
 ```
 
 See [Reproducible results](BENCHMARKS.md#reproducible-results) for what else has to match.
@@ -184,26 +185,30 @@ Measured on the same simulation:
 | epyc3 (EPYC 7643) | 8.2 s | 1.2× slower |
 | epyc5 (EPYC 9745) | 9.6 s | 1.4× slower |
 
-### Two CasADi stacks, one per node type
+### Two CasADi stacks, source by default
 
-Neither CasADi build is fastest everywhere. Measured with jobs submitted
-together (s per iteration, 2 CPUs):
+The installer builds both CasADi stacks, and `~/.predsim/env.sh` is a small selector that
+sources one of them. **By default it uses the source stack on every node type.** That's so a
+result doesn't depend on which node type a job lands on. It isn't the fastest choice everywhere:
 
-| Node type | prebuilt | source | Used on that node |
-|---|---|---|---|
-| epyc4 (preferred) | **4.12** | 4.41 | prebuilt |
-| epyc3 | 5.34 | **4.59** | source |
-| epyc5 | not re-measured | not re-measured | prebuilt |
+| Node type | prebuilt | source | Default | `PREDSIM_CASADI_MODE=fastest` |
+|---|---|---|---|---|
+| epyc4 (preferred) | **4.12** | 4.41 | source | prebuilt |
+| epyc3 | 5.34 | **4.59** | source | source |
+| epyc5 | not re-measured | not re-measured | source | prebuilt |
 
-`--prefer=epyc4` is only a preference, so jobs often land on epyc3. The
-installer therefore builds both stacks, and `~/.predsim/env.sh` is a small
-selector that reads the node's CPU model and sources the matching stack's
-`env.sh`. The log's `== stack :` line shows which one a run used. To use one
-stack everywhere:
+Times are seconds per iteration with MUMPS on 2 CPUs, from jobs submitted together. They haven't
+been re-measured with HSL. The log's `== stack :` line shows which stack a run used.
+
+- **Why source:** the two stacks take different paths through the same solve, so choosing per node made results depend on the node type. `--prefer=epyc4` is only a preference, so jobs often land on epyc3.
+- **To change it for a job:** set `PREDSIM_CASADI_MODE` to `prebuilt`, `source` or `fastest`:
 
 ```bash
-sbatch --export=ALL,PREDSIM_CASADI_MODE=prebuilt bunya/run_predsim.slurm
+sbatch --export=ALL,PREDSIM_CASADI_MODE=fastest bunya/run_predsim.slurm
 ```
+
+- **Existing installs:** `./predsim-install.sh --selector-only` rewrites `~/.predsim/env.sh` with this default. It builds nothing.
+- **Status:** provisional, like the Haswell default. It may change if later runs show a better choice.
 
 To install only one stack, use `sbatch --export=ALL,CASADI_MODE=prebuilt
 bunya/install_predsim.slurm` (or `source`); `~/.predsim/env.sh` then points at

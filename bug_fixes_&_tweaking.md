@@ -166,6 +166,11 @@ SITE_CASADI_MODE_DEFAULT="both"
 SITE_STACK_BY_ARCH="epyc3=source *=prebuilt"
 ```
 
+**Changed on 5 Nov 2026.** A per-node stack made results depend on the node type
+([5.7](#57-the-same-job-gives-different-results-by-cpu-type)), so the default is now source
+everywhere (`SITE_STACK_BY_ARCH="*=source"`). The per-node choice is kept as
+`PREDSIM_CASADI_MODE=fastest`.
+
 The file is replaced with `mv`, not written in place. Writing to the old path
 would have followed its symlink and overwritten a stack's `env.sh`.
 
@@ -689,7 +694,7 @@ Results are in [what changes the result](BENCHMARKS.md#what-changes-the-result).
 | `PREDSIM_CASADI_DIR` | CasADi for this stack | `env.sh` |
 | `PREDSIM_HSL_LIB` | HSL library. Set but empty means MUMPS | `env.sh`, or you |
 | `PREDSIM_HSL_SOLVER` | `ma97` or `ma57` | You |
-| `PREDSIM_CASADI_MODE` | Force `prebuilt` or `source` | You |
+| `PREDSIM_CASADI_MODE` | `prebuilt`, `source`, or `fastest` (per node). Default: source on every node type | You |
 | `PREDSIM_EXTFUN_CFLAGS` | External function CPU flags | `env.sh` |
 | `CMAKE_BUILD_TYPE` | `Release` by default | `run_predsim.sh` |
 | `CFLAGS` | Passes the CPU flags to CMake | `run_predsim.sh` |

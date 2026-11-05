@@ -21,8 +21,8 @@
 #                      faster than epyc5, at the same charge rate. A preference,
 #                      not a requirement: if no epyc4 node is free the job runs
 #                      on another type instead of waiting. The one install works
-#                      on all types, using whichever of the two installed
-#                      stacks is faster there. To force a type, override BOTH options,
+#                      on all types, and uses the same CasADi stack (source)
+#                      on each. To force a type, override BOTH options,
 #                      e.g. --constraint=epyc3 --prefer=epyc3: Slurm uses
 #                      --prefer in place of --constraint whenever it can be met.
 #   --cpus-per-task=2  one physical core (Bunya counts 2 hardware threads per
@@ -37,9 +37,13 @@
 # Environment overrides (sbatch --export=ALL,VAR=value):
 #   PREDSIM_SCRIPT   repo-relative MATLAB script, no .m (default: main)
 #   PREDSIM_DIR      PredSim checkout (default: ~/PredSim)
-#   PREDSIM_ENV      stack env file (default: ~/.predsim/env.sh, which picks the
-#                    faster stack for this node: source on epyc3, else prebuilt)
-#   PREDSIM_CASADI_MODE  prebuilt|source: force one stack on every node type
+#   PREDSIM_ENV      stack env file (default: ~/.predsim/env.sh, which uses the
+#                    source CasADi stack on every node type)
+#   PREDSIM_CASADI_MODE  CasADi stack (default: source on every node type).
+#                    prebuilt|source force one; "fastest" picks the faster stack
+#                    for the node (source on epyc3, else prebuilt). Source is the
+#                    default so results don't follow the node type, NOT for
+#                    speed: prebuilt was about 7% faster on epyc4 with MUMPS.
 #   OPENBLAS_CORETYPE    OpenBLAS code path (default: Haswell on every node type;
 #                    "auto" lets OpenBLAS pick by CPU). See the note in the code below.
 #
@@ -72,8 +76,8 @@ echo "== env: $PREDSIM_ENV -> $(readlink -f "$PREDSIM_ENV")"
 # Haswell needs AVX2, which every Bunya node type has. An empty value is treated
 # as unset, because OpenBLAS would fall back to an old generic path for it.
 #
-# The CasADi stack still changes with the node type unless PREDSIM_CASADI_MODE
-# is set, and that changes results too.
+# The CasADi stack is fixed for the same reason: ~/.predsim/env.sh uses the
+# source stack on every node type unless PREDSIM_CASADI_MODE says otherwise.
 #
 # Provisional default: tested with MA97 on 4 threads, epyc4 forced to Haswell
 # against epyc3. Revisit it if later runs show a better choice
@@ -82,6 +86,6 @@ case "${OPENBLAS_CORETYPE:-Haswell}" in
     auto|Auto|AUTO) unset OPENBLAS_CORETYPE ;;
     *) export OPENBLAS_CORETYPE="${OPENBLAS_CORETYPE:-Haswell}" ;;
 esac
-echo "== OpenBLAS code path: ${OPENBLAS_CORETYPE:-auto (picked by CPU)}"
+echo "== OpenBLAS code path: ${OPENBLAS_CORETYPE:-auto (picked by CPU)}; CasADi stack mode: ${PREDSIM_CASADI_MODE:-site default}"
 
 exec "$PREDSIM_DIR/linux/run_predsim.sh" --env "$PREDSIM_ENV" --script "$PREDSIM_SCRIPT"
