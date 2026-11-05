@@ -716,7 +716,8 @@ is wrong: every OpenBLAS path is accurate to within 12 rounding units on the rou
 The matrix is the problem. Its Jacobian entries span 1e-16 to 2 million, about 77,000 of them are
 rounding-level noise, and one row in seven had its pivot delayed.
 
-A second code confirms it. MATLAB's own sparse `ldl`, which shares nothing with MA97 or OpenBLAS,
+A second code confirms it. MATLAB's sparse `ldl`, which is built on HSL MA57 and Intel's MKL and so
+shares nothing with MA97 or OpenBLAS,
 was given the same matrix at four thresholds:
 
 | Pivot threshold | Relative error of the solve |
@@ -782,9 +783,13 @@ set wrongly by the install.
   failed on all runs. The objective scaling and the barrier parameter also had to change.
 - **It doesn't make results bit-identical.** Paths still split later, so the OpenBLAS path, stack
   and thread count stay pinned ([reproducible results](BENCHMARKS.md#reproducible-results)).
-- **It is specific to MA97.** MA57 at its own 1e-8 default was less affected on this matrix
-  (residual ratio 1.6e-4, barrier parameter 0.49), and tightening it to 1e-2 made it about ten
-  times slower, so MA57 is left at Ipopt's default.
+- **`ma97_u` only affects MA97.** MA57 has its own setting, `ma57_pivtol`, with the same meaning
+  and the same Ipopt default (1e-8); the `ma97_*` options are ignored when MA57 is the solver.
+  Inside Ipopt, MA57 at 1e-8 was less affected on the first matrix (residual ratio 1.6e-4, barrier
+  parameter 0.49), although MATLAB's MA57-based `ldl` at 1e-8 was not accurate on the matrix
+  rebuilt from the saved Jacobian. Tightening `ma57_pivtol` to 1e-2 made MA57 about ten times
+  slower (40 s per iteration), so MA57 is left at Ipopt's default. With the other default options
+  it converged on both problems at that setting.
 
 ## Reference: settings used
 

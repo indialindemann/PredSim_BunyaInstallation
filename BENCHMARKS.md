@@ -694,8 +694,9 @@ entries from 10⁻¹⁶ to 2 million. Ipopt's detailed log (`print_level 7`) at 
 | MA57, default | Residual ratio 1.6·10⁻⁴ | 0.49 |
 
 So at the default threshold the first step depends on rounding, and the two code paths
-start the run with barrier parameters 900 times apart. MATLAB's own sparse factorisation,
-which shares no code with MA97 or OpenBLAS, shows the same thing on the same matrix: a
+start the run with barrier parameters 900 times apart. MATLAB's sparse `ldl`, which is built
+on HSL MA57 and Intel's MKL and so shares no code with MA97 or OpenBLAS, shows the same thing on
+the same matrix: a
 relative solve error of 2.8 at a threshold of 10⁻⁸, 10⁻² at 10⁻⁶, 3·10⁻⁶ at 10⁻⁴ and
 6·10⁻⁸ at 10⁻². Why Ipopt's threshold is that loose, and what its fallbacks did, is in
 [bug fixes 5.8](bug_fixes_%26_tweaking.md#58-the-first-factorisation-is-inaccurate-at-ipopts-default-pivot-threshold).
