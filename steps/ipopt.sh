@@ -44,6 +44,12 @@ step_main() {
 
     log "Ipopt $IPOPT_TAG"
     git_checkout https://github.com/coin-or/Ipopt.git "$IPOPT_TAG" "$src/ipopt"
+    # Load HSL with RTLD_DEEPBIND, as CasADi's official Ipopt does. Otherwise
+    # libhsl's OpenMP calls go to MATLAB's libiomp5 and MA97 fails.
+    sed -i 's/dlopen(libname.c_str(), RTLD_NOW)/dlopen(libname.c_str(), RTLD_NOW | RTLD_DEEPBIND)/' \
+        "$src/ipopt/src/Common/IpLibraryLoader.cpp"
+    grep 'RTLD_DEEPBIND' "$src/ipopt/src/Common/IpLibraryLoader.cpp" >/dev/null \
+        || die "could not patch Ipopt's dlopen flags (IpLibraryLoader.cpp changed?)"
     mkdir -p "$src/ipopt/build"
     ( cd "$src/ipopt/build" && PKG_CONFIG_PATH="$inst/lib/pkgconfig" ../configure \
         --prefix="$inst" --disable-static --disable-java --without-asl --without-hsl \

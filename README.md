@@ -8,6 +8,8 @@ directory, on **UQ's Bunya HPC** or a local Ubuntu workstation.
 - [Install on a local Ubuntu workstation](#install-on-a-local-ubuntu-workstation)
 - [How it works](#how-it-works)
 - [Benchmark findings](BENCHMARKS.md): what was measured, why single-threaded is as fast as multithreaded
+- [Reproducible results](BENCHMARKS.md#reproducible-results): how to get the same result on every run
+- [Bug fixes and tweaking](bug_fixes_%26_tweaking.md): how each bug and speed-up was found, and the exact fix
 
 ---
 
@@ -31,7 +33,42 @@ ssh-keygen -t ed25519 -C "$USER@bunya"      # accept the defaults
 cat ~/.ssh/id_ed25519.pub                   # paste this into GitHub
 ```
 
-### 2. Install (one command)
+### 2. Get the CoinHSL solver [Optional but highly recommended]
+
+PredSim runs faster with HSL's linear solvers than with MUMPS. In an 80-iteration
+benchmark, MA57 made each iteration about 20% faster on epyc3 nodes and about 38%
+faster on epyc4 nodes, at the same CPU cost ([details](BENCHMARKS.md#hsl-ma97-and-ma57)).
+Time to a full solution is still being measured. **The installer requires CoinHSL
+unless you opt out**, so get it before installing.
+
+CoinHSL is licensed, so each user downloads their own copy:
+
+1. Request a CoinHSL licence at <https://licences.stfc.ac.uk/product/coin-hsl>. It's free for academic use. Approval can take a few days.
+2. Once approved, open the downloads for that product and choose the **source tarball**, listed as `CoinHSL <version> (tarball)`, for example `coinhsl-2024.05.15.tar.gz`. Don't choose the `.zip`, or the Windows or Mac binaries.
+3. Copy it to your Bunya home directory, from the computer you downloaded it on:
+
+   ```bash
+   scp coinhsl-2024.05.15.tar.gz <your-username>@bunya.rcc.uq.edu.au:~/
+   ```
+
+The installer uses the newest `~/coinhsl-*.tar.gz` it finds. To use a file somewhere
+else, add `--hsl /path/to/file.tar.gz` to the install command.
+
+**To install without it,** for example while waiting for approval, add `--no-hsl`
+to the end of the command in step 3. PredSim then uses MUMPS.
+
+**Installing it later:** running the installer without `--no-hsl` installs CoinHSL,
+and all future simulations then use it. Only the missing parts are built:
+
+```bash
+cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
+```
+
+To go back to MUMPS after installing CoinHSL, rerun the installer with
+`--no-hsl`, or you can force single simulations to use MUMPS when you 
+launch them (see [Choosing a solver](#choosing-a-solver)).
+
+### 3. Install (one command)
 
 On a Bunya login node:
 
@@ -39,17 +76,18 @@ On a Bunya login node:
 git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git ~/PredSim_BunyaInstallation && cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
 ```
 
-This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; it takes under
-an hour). Nothing heavy runs on the login node. The job:
+This submits a Slurm job (16 CPUs, 32 GB, on an `epyc3` node; a fresh
+install takes about 2 hours). Nothing heavy runs on the login node. The job:
 
-1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`,
-2. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
-3. writes `~/.predsim/env.sh`, the one file a simulation needs,
-4. runs a check that finishes with a short PredSim simulation.
+1. builds OpenBLAS, SWIG and OpenSim 4.5.2, and installs CasADi, opensimAD and a Python venv into `~/predsim-deps/`, twice: one stack with the official prebuilt CasADi and one built from source (see [Two CasADi stacks](#two-casadi-stacks-source-by-default)),
+2. builds CoinHSL into each stack (unless you passed `--no-hsl`),
+3. clones PredSim (`linux/cleancurvev4`) to `~/PredSim`, unless that folder already exists,
+4. writes `~/.predsim/env.sh`, the one file a simulation needs; it uses the source stack on every node type, so results don't depend on where a job lands,
+5. runs a check on each stack that finishes with a short PredSim simulation.
 
 If your default Slurm account isn't the one to charge, add `--account=a_xxxx` after `sbatch`.
 
-### 3. Check it worked
+### 4. Check it worked
 
 ```bash
 squeue --me                                           # job still running?
@@ -65,7 +103,7 @@ Finished steps are skipped:
 cd ~/PredSim_BunyaInstallation && sbatch bunya/install_predsim.slurm
 ```
 
-### 4. Run a simulation
+### 5. Run a simulation
 
 Edit `~/PredSim/main.m` as usual, then:
 
@@ -75,9 +113,18 @@ sbatch ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
 
 | What | Where |
 |---|---|
+| Results | `/scratch/user/$USER/PredSimResults/<subject>/` |
+| MATLAB / IPOPT log | `/scratch/user/$USER/predsim-logs/main-<timestamp>.log` |
 | Job output | `predsim-<jobid>.out` in the directory you submitted from |
-| MATLAB / IPOPT log | `~/PredSim/logs/main-<timestamp>.log` |
-| Results | `~/PredSimResults/<subject>/` |
+
+**Scratch is not long-term storage.** Results and logs go to scratch because home has a 50 GB
+quota, but Bunya clears scratch files that go unused and scratch isn't backed up. Copy
+anything you want to keep to RDM or another backed-up place soon after the run.
+
+- **To write somewhere else:** `--export=ALL,PREDSIM_RESULTS_ROOT=<folder>` for results and `PREDSIM_LOG_DIR=<folder>` for logs. `PREDSIM_RESULTS_ROOT=$HOME/PredSimResults` gives the old location.
+- **The speed loop follows the results folder:** each speed in `main.m` starts from the previous speed's result, and looks for it in the same folder the results are written to.
+- **Job output:** `sbatch` writes `predsim-<jobid>.out` wherever you run it from, so `cd` to a scratch folder first if you want that there too.
+- **Needs PredSim `9c7c530` or later.** Older checkouts write results next to the PredSim folder whatever these are set to.
 
 The default job requests one physical core (`--cpus-per-task=2`), 16 GB and
 7 days, and prefers the fastest node type (see [CPU types](#cpu-types-on-bunya)).
@@ -92,7 +139,44 @@ sbatch --export=ALL,PREDSIM_SCRIPT=myOtherMain ~/PredSim_BunyaInstallation/bunya
 For a quick test, set `S.solver.max_iter` to a few tens in `main.m` first.
 At the default 5000 iterations a run takes hours.
 
-### 5. Updating
+**Jobs fix the OpenBLAS code path to Haswell.** `run_predsim.slurm` sets
+`OPENBLAS_CORETYPE=Haswell` on every node type. This isn't for speed. It's there so a
+result doesn't depend on which node type the job lands on:
+
+- **Why:** OpenBLAS normally picks its code path from the CPU. The paths round differently, and that was enough to change PredSim's result and whether it converged.
+- **To turn it off:** pass `auto`, and OpenBLAS picks by CPU again. Any other OpenBLAS path name also works.
+- **Tested:** forced to Haswell, epyc3, epyc4 and epyc5 print identical iteration lines with MA97, MA57 and MUMPS.
+
+```bash
+sbatch --export=ALL,OPENBLAS_CORETYPE=auto ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
+```
+
+**Jobs also use the same CasADi stack on every node type: source.** This isn't for speed
+either. The two stacks take different paths through the same solve, so a per-node choice made
+results depend on the node type. To get the faster stack for each node type instead:
+
+```bash
+sbatch --export=ALL,PREDSIM_CASADI_MODE=fastest ~/PredSim_BunyaInstallation/bunya/run_predsim.slurm
+```
+
+See [Reproducible results](BENCHMARKS.md#reproducible-results) for what else has to match.
+
+**Jobs also change Ipopt's settings, so the solve converges.** With Ipopt's own defaults
+the 3D sprinting problems didn't converge on Bunya with any linear solver, and some runs
+stopped as "Optimal" at points that weren't optima. PredSim's `linux/run_predsim.sh` now
+adds this list to every solve:
+
+```
+ma97_u=1e-2;ma97_umax=1e-1;ma97_scaling=mc64;nlp_scaling_method=none;obj_scaling_factor=1e-3;mu_max=1;dual_inf_tol=1e-3
+```
+
+- **What it changes:** stricter, more accurate pivoting in MA97 (a larger `ma97_u` rejects small pivots; Ipopt's default 1e-8 accepts almost any) with MC64 scaling, a fixed objective scaling factor instead of Ipopt's automatic scaling, a cap on the barrier parameter, and a stricter test before "Optimal".
+- **`main.m` wins:** anything set in `S.solver.ipopt_options` is kept.
+- **To turn it off:** `--export=ALL,PREDSIM_IPOPT_OPTIONS=none` gives Ipopt's defaults. The same variable takes your own `name=value;name=value` list.
+- **Memory:** runs with this list peaked under 10 GB, so the 16 GB default still fits.
+- **Check the gait:** these problems have several local optima, some of them left-right asymmetric. See [Ipopt settings](BENCHMARKS.md#ipopt-settings).
+
+### 6. Updating
 
 ```bash
 cd ~/PredSim_BunyaInstallation && git pull && sbatch bunya/install_predsim.slurm   # installer / dependencies
@@ -125,38 +209,54 @@ Measured on the same simulation:
 | epyc3 (EPYC 7643) | 8.2 s | 1.2× slower |
 | epyc5 (EPYC 9745) | 9.6 s | 1.4× slower |
 
-### Optional: CasADi built from source
+### Two CasADi stacks, source by default
+
+The installer builds both CasADi stacks, and `~/.predsim/env.sh` is a small selector that
+sources one of them. **By default it uses the source stack on every node type.** That's so a
+result doesn't depend on which node type a job lands on. It isn't the fastest choice everywhere:
+
+| Node type | prebuilt | source | Default | `PREDSIM_CASADI_MODE=fastest` |
+|---|---|---|---|---|
+| epyc4 (preferred) | **4.12** | 4.41 | source | prebuilt |
+| epyc3 | 5.34 | **4.59** | source | source |
+| epyc5 | not re-measured | not re-measured | source | prebuilt |
+
+Times are seconds per iteration with MUMPS on 2 CPUs, from jobs submitted together. They haven't
+been re-measured with HSL. The log's `== stack :` line shows which stack a run used.
+
+- **Why source:** the two stacks take different paths through the same solve, so choosing per node made results depend on the node type. `--prefer=epyc4` is only a preference, so jobs often land on epyc3.
+- **To change it for a job:** set `PREDSIM_CASADI_MODE` to `prebuilt`, `source` or `fastest`:
 
 ```bash
-sbatch --export=ALL,CASADI_MODE=source bunya/install_predsim.slurm
+sbatch --export=ALL,PREDSIM_CASADI_MODE=fastest bunya/run_predsim.slurm
 ```
 
-This compiles CasADi, Ipopt and MUMPS instead of using the official CasADi
-binaries. **Source stacks installed on Bunya before 3 Nov 2026 give wrong
+- **Existing installs:** `./predsim-install.sh --selector-only` rewrites `~/.predsim/env.sh` with this default. It builds nothing.
+- **Status:** provisional, like the Haswell default. It may change if later runs show a better choice.
+
+To install only one stack, use `sbatch --export=ALL,CASADI_MODE=prebuilt
+bunya/install_predsim.slurm` (or `source`); `~/.predsim/env.sh` then points at
+that stack. **Source stacks installed on Bunya before 3 Nov 2026 give wrong
 results** (BLAS errors, diverging solves; see [BENCHMARKS.md](BENCHMARKS.md#6-multithreaded-mumps)).
-Rerun this command to rebuild one. The default stays prebuilt. With the fix,
-source is 16% faster on epyc3 but 7% slower on epyc4, where jobs normally run. On the Ubuntu workstation source is about 10% faster and is
-the default there (see [CasADi](#casadi-prebuilt-vs-source)).
+Rerunning the install rebuilds them. On the Ubuntu workstation source is
+about 10% faster on its own CPU, so it installs just that (see [CasADi](#casadi-prebuilt-vs-source)).
 
-### Optional: HSL MA97 linear solver (as on Windows)
+### Choosing a solver
 
-The Windows PredSim uses HSL's MA97 instead of MUMPS when CoinHSL is
-installed. To do the same on Linux:
+With CoinHSL installed, PredSim uses MA97 and prints `Using HSL linear solver: ma97`.
+To choose another solver for a job:
 
-1. Request CoinHSL (free for academic use) at
-   <https://licences.stfc.ac.uk/product/coin-hsl>. Download the **source**
-   archive `coinhsl-<version>.tar.gz` (or the `x86_64-linux-gnu` binary) and copy it to Bunya.
-2. Add it to your install (about 10 minutes):
+```bash
+sbatch --export=ALL,PREDSIM_HSL_SOLVER=ma57 bunya/run_predsim.slurm       # MA57
+sbatch --cpus-per-task=4 --export=ALL,OMP_NUM_THREADS=4 bunya/run_predsim.slurm   # MA97, 4 threads
+sbatch --export=ALL,PREDSIM_HSL_LIB= bunya/run_predsim.slurm              # MUMPS
+```
 
-   ```bash
-   cd ~/PredSim_BunyaInstallation
-   sbatch --export=ALL,PREDSIM_INSTALL_ARGS="--hsl $HOME/coinhsl-2024.05.15.tar.gz" bunya/install_predsim.slurm
-   ```
-
-PredSim then prints `Using HSL linear solver: ma97`. MA97's threads come from
-`OMP_NUM_THREADS` (default 1). To go back to MUMPS without reinstalling, set
-`PREDSIM_HSL_LIB=` (empty), e.g. `sbatch --export=ALL,PREDSIM_HSL_LIB= ...`.
-Benchmark: see [BENCHMARKS.md](BENCHMARKS.md#hsl-ma97).
+Per iteration, MA57 at 1 thread is about 20% faster than MUMPS on epyc3 and
+38% on epyc4 at the same CPU cost. MA97 is the fastest on epyc4 with threads,
+at much higher cost. **These are 80-iteration results, and the solvers take
+different paths, so time to a solution isn't measured yet.** See
+[BENCHMARKS.md](BENCHMARKS.md#hsl-ma97-and-ma57).
 
 ### Bunya troubleshooting
 
@@ -180,10 +280,15 @@ change these.
 git clone git@github.com:indialindemann/PredSim_BunyaInstallation.git
 cd PredSim_BunyaInstallation
 ./predsim-install.sh --site ubuntu-local --list     # what will run / is done
-./predsim-install.sh --site ubuntu-local            # install
+./predsim-install.sh --site ubuntu-local            # install (needs ~/coinhsl-*.tar.gz)
+./predsim-install.sh --site ubuntu-local --no-hsl   # or install without CoinHSL, using MUMPS
 ~/PredSim/linux/run_predsim.sh                      # run main.m
 nohup ~/PredSim/linux/run_predsim.sh > /dev/null 2>&1 &   # long run in the background; log in ~/PredSim/logs/
 ```
+
+CoinHSL is required here too, unless you pass `--no-hsl`: see
+[Get the CoinHSL solver](#2-get-the-coinhsl-solver-optional-but-highly-recommended). HSL's speed hasn't been
+benchmarked on a workstation.
 
 The local MATLAB R2024b's libstdc++ stops at GLIBCXX_3.4.30. gcc 12 matches
 it; Ubuntu's own gcc 13 would not.
@@ -199,8 +304,10 @@ Everything is installed under `~/predsim-deps/`:
 - `<site>[-epyc3]_casadi-<ver>-<mode>_opensim-<ver>/` holds one stack each:
   CasADi, Ipopt/MUMPS (source mode), opensimAD, the Python venv and `env.sh`.
 
-`~/.predsim/env.sh` points at the default stack. To remove a stack, `rm -rf`
-its folder.
+`~/.predsim/env.sh` points at the default stack (with `--casadi both`, it
+is a selector: on Bunya it sources the source stack on every node type, or one
+stack per CPU type with `PREDSIM_CASADI_MODE=fastest`). To remove a stack,
+`rm -rf` its folder.
 
 Each step logs to `<stack>/logs/<step>.log` and records a hash of its inputs.
 Re-running only redoes steps whose script, `versions.env` or site file
@@ -212,7 +319,9 @@ current after a comment-only edit.
 | | |
 |---|---|
 | `--site bunya\|ubuntu-local` | machine config in `sites/` (the Bunya job script always passes `bunya`) |
-| `--casadi prebuilt\|source` | see below |
+| `--casadi prebuilt\|source\|both` | see below; `both` installs both stacks and a per-CPU selector (`SITE_STACK_BY_ARCH`; Bunya's default) |
+| `--hsl ARCHIVE` | build CoinHSL from this file (default: the newest `~/coinhsl-*.tar.gz`) |
+| `--no-hsl` | skip CoinHSL and use MUMPS. Without this flag the install fails if it needs CoinHSL and finds no archive |
 | `--only casadi,verify` / `--from opensim` | run part of the install |
 | `--list` | show steps and their state |
 | `--activate` | point `~/.predsim/env.sh` at this stack |
@@ -229,6 +338,7 @@ current after a comment-only edit.
 | `openblas` | Bunya: OpenBLAS 0.3.32 with `DYNAMIC_ARCH` (the gcc-12 module family only has 0.3.23, which breaks MUMPS) |
 | `ipopt` | source mode only: MUMPS (METIS ordering) + Ipopt, optimised for the CPU |
 | `casadi` | official prebuilt zip, or a build from `casadi-source-v<ver>.zip` |
+| `hsl` | CoinHSL from `coinhsl-*.tar.gz`, with METIS and OpenBLAS linked in (see [bug fixes](bug_fixes_%26_tweaking.md#27-matlab-taking-over-hsls-calls)) |
 | `swig` | upstream SWIG 4.1.1 for OpenSim's Java bindings |
 | `opensim` | opensim-core `4.5.2` + its pinned Simbody/spdlog/docopt, Java bindings, install RPATHs |
 | `geometry` | OpenSim Geometry from opensim-models (no Windows installer / 7-Zip) |
@@ -248,9 +358,10 @@ builds with `SWIG_IMPORT=ON`, so **neither mode needs SWIG**.
 - `source` compiles CasADi, Ipopt and MUMPS (with METIS) for the CPU.
 
 The default is set per site from benchmark results: **source on the Ubuntu
-workstation** (about 10% faster, all in MUMPS) and **prebuilt on Bunya**
-(7% faster on epyc4, where jobs normally run; source is 16% faster on
-epyc3). To compare stacks on fixed work, submit the jobs together:
+workstation** (about 10% faster, all in MUMPS) and **both on Bunya**
+(prebuilt is 7% faster on epyc4, source 16% faster on epyc3; jobs use source
+on every node type so results don't follow the node, and
+`PREDSIM_CASADI_MODE=fastest` picks the faster one per node). To compare stacks on fixed work, submit the jobs together:
 
 ```bash
 PREDSIM_BENCH_ITERS=80 ~/PredSim/linux/run_predsim.sh --env <stackA>/env.sh --script linux/bench/bench_predsim
@@ -280,18 +391,31 @@ Builds tuned for epyc4/epyc5 (`-march=znver4`) were benchmarked, but those
 source-mode timings are void (see [BENCHMARKS.md](BENCHMARKS.md#4-cpu-types-on-bunya)),
 so tuned builds aren't offered.
 
+### External function speed-ups
+
+Most of each iteration is spent in the model's external function,
+`Subjects/<subject>/F_<subject>.so`, which PredSim compiles on its first run of
+a model. Two changes to how it is compiled, both in `linux/run_predsim.sh`, sped it up:
+
+1. **`-O3`:** opensimAD_linux compiled it at `-O0` (Windows uses `/O2`).
+   Setting `CMAKE_BUILD_TYPE=Release` made PredSim **1.8× faster** (8.4 → 4.7 s
+   per iteration, epyc3).
+2. **`-march=znver3`** (Bunya): adds FMA/AVX2, which every Bunya node type
+   supports. Each call is **28% faster**, and an iteration 12% faster on epyc4
+   (4.21 → 3.70 s). `znver4` is no faster, and would crash on epyc3 nodes.
+
+**Delete `F_*.so` files built before 3 Nov 2026 once** (`rm
+~/PredSim/Subjects/*/F_*.so`); PredSim rebuilds them in about 3 minutes per
+model. Details: [BENCHMARKS.md sections 1 and 1b](BENCHMARKS.md#1-external-function-optimisation--o0---o3).
+
 ### Threads (`S.solver.N_threads`) and compiler optimisation
 
 PredSim's `OCP/solve_NLPSOL.m` (on cleancurvev4 since 21 Oct 2026) builds the
 solver with `expand = true`. That makes the solve single-threaded:
 `S.solver.N_threads` has no effect, so the run job requests one physical core.
 
-Most of each iteration is spent in the model's external function
-`Subjects/<subject>/F_<subject>.so`, which opensimAD_linux compiles with no
-optimisation (`-O0`; on Windows opensimAD uses `/O2`). PredSim's
-`linux/run_predsim.sh` now sets `CMAKE_BUILD_TYPE=Release`, so it is compiled at
-`-O3`. **Delete `F_*.so` files built before this change once**; PredSim
-rebuilds them (about 3 minutes per model).
+The external function's compiler flags ([above](#external-function-speed-ups))
+also change how threads compare:
 
 | epyc3, 80 iterations | CPUs | s / iteration | vs current | fair-share charge |
 |---|---|---|---|---|
